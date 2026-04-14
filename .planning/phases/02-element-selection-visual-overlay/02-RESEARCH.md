@@ -505,22 +505,25 @@ export default defineContentScript({
 
 **If this table is empty:** N/A — three assumptions identified above.
 
-## Open Questions
+## Open Questions (RESOLVED)
 
 1. **Does `chrome.tabs.sendMessage` work directly from side panel to content script?**
    - What we know: Chrome docs say any extension page can use `chrome.tabs.sendMessage`. Side panel is an extension page. StackOverflow has mixed reports.
    - What's unclear: Whether a background service worker relay is always needed or only in certain Chrome versions.
    - Recommendation: Implement direct `chrome.tabs.sendMessage` first. If it fails, add a trivial relay through the background service worker. Both patterns are well-documented.
+   - **(RESOLVED)** Plan 02 implements direct `chrome.tabs.sendMessage` from sidebar. Background relay deferred until testing proves it necessary (per A3 assumption).
 
 2. **Should the overlay host be created immediately on content script load or lazily on first inspect?**
    - What we know: Creating an empty Shadow DOM host has near-zero performance cost. But it does add an element to every localhost page.
    - What's unclear: Whether any pages break with an unknown custom element in their body.
    - Recommendation: Create lazily on first `start-inspect` command. Remove on `stop-inspect`. This is cleaner and avoids any potential side effects on pages that aren't being inspected.
+   - **(RESOLVED)** Plan 01 creates overlay host eagerly in `content.ts main()` but `mountOverlay` / `unmountOverlay` in `InspectMode.start()` / `stop()` controls DOM attachment. Host object exists in memory; DOM insertion is lazy.
 
 3. **How should negative margins be handled visually?**
    - What we know: `getComputedStyle` returns negative margin values. The margin overlay should extend in the negative direction (overlapping adjacent elements).
    - What's unclear: Whether this creates confusing visuals.
    - Recommendation: Render negative margins as-is (extending in the negative direction). Chrome DevTools does the same. Clamp to zero only if visuals are confusing during testing.
+   - **(RESOLVED)** Plan 01 renders negative margins as-is, matching Chrome DevTools behavior. No clamping.
 
 ## Environment Availability
 
