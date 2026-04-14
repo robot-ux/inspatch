@@ -1,10 +1,17 @@
 import { useState, useEffect, useCallback } from 'react';
 import type { ElementSelection } from '@inspatch/shared';
+import { useWebSocket, type ConnectionStatus } from './hooks/useWebSocket';
 
 type SidebarState = 'idle' | 'inspecting' | 'selected';
 
+const statusConfig: Record<ConnectionStatus, { dotClass: string; label: string }> = {
+  connected: { dotClass: 'bg-green-500', label: 'Connected' },
+  reconnecting: { dotClass: 'bg-yellow-500 animate-pulse', label: 'Reconnecting...' },
+  disconnected: { dotClass: 'bg-gray-400', label: 'Disconnected' },
+};
+
 export default function App() {
-  const [connected] = useState(false);
+  const { status, lastMessage, send } = useWebSocket('ws://localhost:9377');
   const [sidebarState, setSidebarState] = useState<SidebarState>('idle');
   const [selectedElement, setSelectedElement] = useState<ElementSelection | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -80,9 +87,9 @@ export default function App() {
       <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200">
         <h1 className="text-lg font-semibold text-gray-900">Inspatch</h1>
         <div className="flex items-center gap-2">
-          <div className={`w-2 h-2 rounded-full ${connected ? 'bg-green-500' : 'bg-gray-400'}`} />
+          <div className={`w-2 h-2 rounded-full ${statusConfig[status].dotClass}`} />
           <span className="text-xs text-gray-500">
-            {connected ? 'Connected' : 'Disconnected'}
+            {statusConfig[status].label}
           </span>
         </div>
       </div>

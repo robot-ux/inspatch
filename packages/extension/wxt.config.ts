@@ -9,7 +9,7 @@ export default defineConfig({
   manifest: {
     name: 'Inspatch',
     description: 'Visual code editing for locally-served web pages',
-    permissions: ['activeTab', 'sidePanel', 'scripting'],
+    permissions: ['activeTab', 'sidePanel', 'scripting', 'storage'],
     host_permissions: ['http://localhost:*/*'],
     action: {},
   },
