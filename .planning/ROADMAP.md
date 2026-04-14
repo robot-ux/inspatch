@@ -32,7 +32,12 @@ Decimal phases appear between their surrounding integers in numeric order.
   3. Clicking the extension icon opens a side panel with a React-rendered UI
   4. Shared Zod schemas are importable from both extension and server packages
   5. `bun test` runs across all packages with at least one passing test
-**Plans**: TBD
+**Plans:** 2 plans
+
+Plans:
+- [ ] 01-01-PLAN.md — Bun monorepo scaffold + shared Zod protocol schemas
+- [ ] 01-02-PLAN.md — WXT extension shell + React side panel with Tailwind
+
 **UI hint**: yes
 
 ### Phase 2: Element Selection & Visual Overlay
