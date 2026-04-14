@@ -13,7 +13,7 @@ const statusConfig: Record<ConnectionStatus, { dotClass: string; label: string }
 };
 
 export default function App() {
-  const { status, lastMessage, send } = useWebSocket('ws://localhost:9377');
+  const { status, lastMessage, send, reconnect } = useWebSocket('ws://localhost:9377');
   const [sidebarState, setSidebarState] = useState<SidebarState>('idle');
   const [selectedElement, setSelectedElement] = useState<ElementSelection | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -151,12 +151,16 @@ export default function App() {
     <div className="flex flex-col h-screen bg-white">
       <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200">
         <h1 className="text-lg font-semibold text-gray-900">Inspatch</h1>
-        <div className="flex items-center gap-2">
+        <button
+          onClick={status !== 'connected' ? reconnect : undefined}
+          className={`flex items-center gap-2 ${status !== 'connected' ? 'cursor-pointer hover:opacity-80' : 'cursor-default'}`}
+          title={status !== 'connected' ? 'Click to reconnect' : ''}
+        >
           <div className={`w-2 h-2 rounded-full ${statusConfig[status].dotClass}`} />
           <span className="text-xs text-gray-500">
             {statusConfig[status].label}
           </span>
-        </div>
+        </button>
       </div>
 
       {error && (
@@ -212,6 +216,12 @@ export default function App() {
                 {`cd your-project\nbunx @inspatch/server --project .`}
               </code>
             </div>
+            <button
+              onClick={reconnect}
+              className="px-4 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-medium rounded-lg transition-colors"
+            >
+              Reconnect
+            </button>
             <p className="text-[11px] text-gray-400 text-center">
               Requires <span className="font-mono">bun</span> and <span className="font-mono">claude</span> CLI to be installed
             </p>

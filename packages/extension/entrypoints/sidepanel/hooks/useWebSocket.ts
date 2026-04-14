@@ -7,7 +7,7 @@ export type ConnectionStatus = "connected" | "reconnecting" | "disconnected";
 
 const INITIAL_BACKOFF = 1000;
 const MAX_BACKOFF = 30_000;
-const DISCONNECTED_THRESHOLD = 8_000;
+const DISCONNECTED_THRESHOLD = 2_000;
 const PING_INTERVAL = 20_000;
 const PONG_TIMEOUT = 5_000;
 
@@ -151,5 +151,11 @@ export function useWebSocket(url: string) {
     }
   }, []);
 
-  return { status, lastMessage, send };
+  const reconnect = useCallback(() => {
+    backoffRef.current = INITIAL_BACKOFF;
+    setStatus("reconnecting");
+    connect();
+  }, [connect]);
+
+  return { status, lastMessage, send, reconnect };
 }
