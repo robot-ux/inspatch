@@ -107,3 +107,33 @@
   background-size: 200% 100%;
   animation: shimmer 2s linear infinite;
 }
+
+::-webkit-scrollbar {
+  width: 4px;
+}
+::-webkit-scrollbar-track {
+  background: var(--ip-bg-primary);
+}
+::-webkit-scrollbar-thumb {
+  background: var(--ip-bg-tertiary);
+  border-radius: 2px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--ip-text-muted);
+}
+
+::selection {
+  background-color: var(--ip-accent-solid);
+  color: #FFFFFF;
+}
+
+*:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--ip-border-accent), var(--ip-shadow-glow-accent);
+}
+
+body {
+  background-color: var(--ip-bg-primary);
+  color: var(--ip-text-primary);
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+}
