@@ -6,23 +6,27 @@ export const ConnectionStatusSchema = z.object({
   serverVersion: z.string().optional(),
 });
 
+export const BoundingRectSchema = z.object({
+  x: z.number(),
+  y: z.number(),
+  width: z.number(),
+  height: z.number(),
+});
+
 export const ElementSelectionSchema = z.object({
   type: z.literal("element_selection"),
   tagName: z.string(),
   className: z.string(),
   id: z.string().optional(),
   xpath: z.string(),
-  boundingRect: z.object({
-    x: z.number(),
-    y: z.number(),
-    width: z.number(),
-    height: z.number(),
-  }),
+  boundingRect: BoundingRectSchema,
   componentName: z.string().optional(),
   parentChain: z.array(z.string()).optional(),
   sourceFile: z.string().optional(),
   sourceLine: z.number().optional(),
   sourceColumn: z.number().optional(),
+  devicePixelRatio: z.number().default(1),
+  computedStyles: z.record(z.string(), z.string()).optional(),
 });
 
 export const ChangeRequestSchema = z.object({
@@ -34,7 +38,10 @@ export const ChangeRequestSchema = z.object({
   parentChain: z.array(z.string()).optional(),
   sourceFile: z.string().optional(),
   sourceLine: z.number().optional(),
+  sourceColumn: z.number().optional(),
   screenshotDataUrl: z.string().optional(),
+  boundingRect: BoundingRectSchema.optional(),
+  computedStyles: z.record(z.string(), z.string()).optional(),
 });
 
 export const StatusUpdateSchema = z.object({

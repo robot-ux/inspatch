@@ -6,6 +6,28 @@ import { resolveSourceLocation, findComponentSource } from './source-resolver';
 
 const logger = createLogger('messaging');
 
+const RELEVANT_STYLE_PROPERTIES = [
+  'display', 'position', 'width', 'height', 'min-width', 'min-height', 'max-width', 'max-height',
+  'margin', 'padding', 'box-sizing',
+  'flex-direction', 'justify-content', 'align-items', 'gap', 'grid-template-columns', 'grid-template-rows',
+  'font-family', 'font-size', 'font-weight', 'line-height', 'color', 'text-align', 'text-decoration', 'letter-spacing',
+  'background-color', 'background-image', 'border', 'border-radius', 'opacity', 'box-shadow', 'overflow',
+] as const;
+
+const SKIP_VALUES = new Set(['', 'none', 'normal', 'auto', '0px']);
+
+function extractComputedStyles(el: Element): Record<string, string> {
+  const computed = window.getComputedStyle(el);
+  const styles: Record<string, string> = {};
+  for (const prop of RELEVANT_STYLE_PROPERTIES) {
+    const value = computed.getPropertyValue(prop);
+    if (!SKIP_VALUES.has(value)) {
+      styles[prop] = value;
+    }
+  }
+  return styles;
+}
+
 export function setupMessageListeners(
   inspectMode: InspectMode,
   getLastSelected: () => Element | null,
@@ -52,6 +74,8 @@ export async function sendElementSelection(el: Element): Promise<void> {
       width: Math.round(rect.width),
       height: Math.round(rect.height),
     },
+    devicePixelRatio: window.devicePixelRatio,
+    computedStyles: extractComputedStyles(el),
   };
 
   try {
