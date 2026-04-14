@@ -47,6 +47,15 @@ export function useWebSocket(url: string) {
 
     cleanup();
 
+    if (wsRef.current) {
+      wsRef.current.onopen = null;
+      wsRef.current.onclose = null;
+      wsRef.current.onerror = null;
+      wsRef.current.onmessage = null;
+      wsRef.current.close();
+      wsRef.current = null;
+    }
+
     try {
       const ws = new WebSocket(urlRef.current);
       wsRef.current = ws;
