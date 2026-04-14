@@ -58,10 +58,7 @@ export function useScreenshot() {
       setIsCapturing(true);
       setError(null);
       try {
-        const fullDataUrl = await chrome.tabs.captureVisibleTab(undefined as unknown as number, {
-          format: "png",
-          quality: 100,
-        });
+        const fullDataUrl = await chrome.tabs.captureVisibleTab({ format: "png" });
         const cropped = await cropScreenshot(fullDataUrl, boundingRect, devicePixelRatio);
         setScreenshotUrl(cropped);
         setIsCapturing(false);

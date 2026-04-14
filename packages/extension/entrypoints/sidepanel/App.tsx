@@ -50,8 +50,25 @@ export default function App() {
       }
     };
     chrome.runtime.onMessage.addListener(listener);
-    return () => chrome.runtime.onMessage.removeListener(listener);
-  }, []);
+
+    const onTabUpdated = (
+      _tabId: number,
+      changeInfo: chrome.tabs.TabChangeInfo,
+    ) => {
+      if (changeInfo.status === 'loading') {
+        setSelectedElement(null);
+        setSidebarState('idle');
+        clearScreenshot();
+        setError(null);
+      }
+    };
+    chrome.tabs.onUpdated.addListener(onTabUpdated);
+
+    return () => {
+      chrome.runtime.onMessage.removeListener(listener);
+      chrome.tabs.onUpdated.removeListener(onTabUpdated);
+    };
+  }, [captureScreenshot, clearScreenshot]);
 
   const handleStartInspect = useCallback(async () => {
     try {
