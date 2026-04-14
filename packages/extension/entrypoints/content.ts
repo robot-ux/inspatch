@@ -1,11 +1,20 @@
 import { createOverlayHost, createOverlayLayers } from './content/overlay-manager';
 import { InspectMode } from './content/inspect-mode';
 import { setupMessageListeners, sendElementSelection } from './content/messaging';
+import { initFiberBridge } from './content/fiber-bridge';
+import { clearSourceMapCache } from './content/source-resolver';
 
 export default defineContentScript({
   matches: ['http://localhost:*/*'],
-  main(ctx) {
+  async main(ctx) {
     console.log('[Inspatch] Content script loaded on', window.location.href);
+
+    try {
+      await initFiberBridge();
+    } catch {
+      console.warn('[Inspatch] Fiber bridge init failed — React detection unavailable');
+    }
+
     const { host, shadow } = createOverlayHost();
     const layers = createOverlayLayers(shadow);
 
@@ -28,6 +37,7 @@ export default defineContentScript({
     ctx.onInvalidated(() => {
       inspectMode.stop();
       cleanupMessaging();
+      clearSourceMapCache();
       host.remove();
     });
   },

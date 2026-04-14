@@ -1,5 +1,7 @@
 import type { InspectMode } from './inspect-mode';
-import { getXPath } from './element-detector';
+import { getXPath, getUniqueSelector } from './element-detector';
+import { queryFiber } from './fiber-bridge';
+import { resolveSourceLocation, findComponentSource } from './source-resolver';
 
 export function setupMessageListeners(
   inspectMode: InspectMode,
@@ -32,10 +34,10 @@ export function setupMessageListeners(
   return () => chrome.runtime.onMessage.removeListener(handler);
 }
 
-export function sendElementSelection(el: Element): void {
+export async function sendElementSelection(el: Element): Promise<void> {
   const rect = el.getBoundingClientRect();
-  const payload = {
-    type: 'element_selection' as const,
+  const payload: Record<string, unknown> = {
+    type: 'element_selection',
     tagName: el.tagName.toLowerCase(),
     className: typeof el.className === 'string' ? el.className : '',
     id: el.id || undefined,
@@ -47,6 +49,43 @@ export function sendElementSelection(el: Element): void {
       height: Math.round(rect.height),
     },
   };
+
+  try {
+    const selector = getUniqueSelector(el);
+    const fiberResult = await queryFiber(selector);
+
+    if (fiberResult.componentName) {
+      payload.componentName = fiberResult.componentName;
+    }
+    if (fiberResult.parentChain.length > 0) {
+      payload.parentChain = fiberResult.parentChain;
+    }
+
+    if (fiberResult.debugSource) {
+      const resolved = await resolveSourceLocation(
+        fiberResult.debugSource.fileName,
+        fiberResult.debugSource.lineNumber,
+        0,
+      );
+      if (resolved) {
+        payload.sourceFile = resolved.source;
+        payload.sourceLine = resolved.line;
+        payload.sourceColumn = resolved.column;
+      } else {
+        payload.sourceFile = fiberResult.debugSource.fileName;
+        payload.sourceLine = fiberResult.debugSource.lineNumber;
+      }
+    } else if (fiberResult.componentName) {
+      const found = await findComponentSource(fiberResult.componentName);
+      if (found) {
+        payload.sourceFile = found.source;
+        payload.sourceLine = found.line;
+        payload.sourceColumn = found.column;
+      }
+    }
+  } catch {
+    // Enrichment failed — send basic payload without component info
+  }
 
   chrome.runtime.sendMessage(payload).catch(() => {});
 }

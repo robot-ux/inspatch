@@ -175,6 +175,47 @@ export default function App() {
             <p className="text-xs font-mono text-gray-400 truncate" title={selectedElement.xpath}>
               {selectedElement.xpath}
             </p>
+
+            <div className="border-t border-gray-100 pt-2 mt-2 space-y-1.5">
+              {selectedElement.componentName ? (
+                <>
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-xs text-gray-400">&lt;/&gt;</span>
+                    <span className="text-sm font-mono font-medium text-purple-600">
+                      {selectedElement.componentName}
+                    </span>
+                  </div>
+                  {selectedElement.parentChain && selectedElement.parentChain.length > 1 && (() => {
+                    const chain = selectedElement.parentChain!;
+                    const display = chain.length > 5 ? chain.slice(-4) : chain;
+                    return (
+                      <p className="text-xs font-mono text-gray-400 truncate">
+                        {chain.length > 5 && <span>… {'>'} </span>}
+                        {display.map((name, i) => (
+                          <span key={i}>
+                            {i > 0 && <span className="text-gray-300"> {'>'} </span>}
+                            <span className="text-gray-500">{name}</span>
+                          </span>
+                        ))}
+                      </p>
+                    );
+                  })()}
+                  {selectedElement.sourceFile && (() => {
+                    const parts = selectedElement.sourceFile!.split('/');
+                    const truncated = parts.length > 3
+                      ? '…/' + parts.slice(-3).join('/')
+                      : selectedElement.sourceFile!;
+                    return (
+                      <p className="text-xs font-mono text-green-600 truncate" title={selectedElement.sourceFile}>
+                        {truncated}{selectedElement.sourceLine ? `:${selectedElement.sourceLine}` : ''}
+                      </p>
+                    );
+                  })()}
+                </>
+              ) : (
+                <p className="text-xs text-gray-400 italic">No React component detected</p>
+              )}
+            </div>
           </div>
         )}
       </div>
