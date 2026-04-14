@@ -50,7 +50,12 @@ Plans:
   3. Alt+Click selects an element and the highlight persists on the selected element
   4. Pressing Escape exits inspect mode and removes all overlays
   5. Overlay never interferes with normal page interactions (Shadow DOM isolated, pointer-events: none)
-**Plans**: TBD
+**Plans:** 2 plans
+
+Plans:
+- [ ] 02-01-PLAN.md — Content script overlay engine (Shadow DOM, box-model visualization, inspect mode state machine, messaging)
+- [ ] 02-02-PLAN.md — Sidebar inspect UI and message integration (Start/Stop Inspect button, element info display)
+
 **UI hint**: yes
 
 ### Phase 3: Messaging Pipeline & Local Server
@@ -162,7 +167,7 @@ Note: Phases 2 and 3 can execute in parallel (independent dependencies).
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Project Foundation & Extension Shell | 0/0 | Not started | - |
-| 2. Element Selection & Visual Overlay | 0/0 | Not started | - |
+| 2. Element Selection & Visual Overlay | 0/2 | Not started | - |
 | 3. Messaging Pipeline & Local Server | 0/0 | Not started | - |
 | 4. React Fiber Detection & Source Map Resolution | 0/0 | Not started | - |
 | 5. Screenshot Capture & Context Assembly | 0/0 | Not started | - |
