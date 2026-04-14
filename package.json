@@ -1,0 +1,11 @@
+{
+  "name": "inspatch",
+  "private": true,
+  "workspaces": ["packages/*"],
+  "scripts": {
+    "dev": "cd packages/extension && bun run dev",
+    "build": "cd packages/extension && bun run build",
+    "test": "bun test",
+    "lint": "echo 'lint configuration pending'"
+  }
+}
