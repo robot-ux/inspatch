@@ -5,7 +5,7 @@ import { initFiberBridge } from './content/fiber-bridge';
 import { clearSourceMapCache } from './content/source-resolver';
 
 export default defineContentScript({
-  matches: ['http://localhost:*/*'],
+  matches: ['http://localhost/*'],
   main(ctx) {
     initFiberBridge().catch(() => {});
 
