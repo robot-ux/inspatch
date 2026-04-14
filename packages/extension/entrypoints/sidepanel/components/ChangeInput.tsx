@@ -60,17 +60,18 @@ export function ChangeInput({ onSend, disabled }: ChangeInputProps) {
   const removeImage = useCallback(() => setImageDataUrl(null), []);
 
   return (
-    <div className="border-t border-gray-200 p-3 bg-white animate-slide-up">
+    <div className="border-t border-ip-border-subtle p-3 bg-ip-bg-secondary animate-slide-up">
       {imageDataUrl && (
         <div className="relative mb-2 inline-block animate-fade-in-scale">
           <img
             src={imageDataUrl}
             alt="Pasted screenshot"
-            className="max-h-28 rounded-md border border-gray-200 object-contain"
+            className="max-h-28 rounded-ip-md border border-ip-border-subtle object-contain"
           />
           <button
             onClick={removeImage}
-            className="absolute -top-1.5 -right-1.5 w-5 h-5 flex items-center justify-center bg-gray-700 hover:bg-gray-900 text-white text-xs rounded-full leading-none"
+            aria-label="Remove image"
+            className="absolute -top-1.5 -right-1.5 w-5 h-5 flex items-center justify-center bg-ip-bg-tertiary hover:bg-ip-text-muted text-white text-xs rounded-full leading-none"
             title="Remove image"
           >
             &times;
@@ -86,15 +87,19 @@ export function ChangeInput({ onSend, disabled }: ChangeInputProps) {
         disabled={disabled}
         rows={3}
         placeholder={"Describe the change you want…\nPaste a screenshot with Cmd/Ctrl+V"}
-        className="w-full resize-none rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent placeholder:text-gray-400 disabled:bg-gray-50 disabled:text-gray-400"
+        className="w-full resize-none rounded-ip-md border border-ip-border-subtle bg-ip-bg-input px-3 py-2 text-[13px] text-ip-text-primary focus:outline-none focus:ring-2 focus:ring-[rgba(99,102,241,0.2)] focus:border-ip-border-accent placeholder:text-ip-text-muted disabled:opacity-50 disabled:cursor-not-allowed"
       />
       <div className="flex justify-end mt-2">
         <button
           onClick={handleSend}
           disabled={!canSend}
-          className="px-4 py-1.5 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed text-white text-sm font-medium rounded-lg transition-colors"
+          className={`px-4 py-1.5 text-[13px] font-semibold rounded-ip-md transition-all ${
+            canSend
+              ? 'bg-linear-[135deg] from-ip-gradient-start to-ip-gradient-end hover:brightness-110 text-white'
+              : 'opacity-40 bg-ip-bg-tertiary text-ip-text-muted cursor-not-allowed'
+          }`}
         >
-          Send
+          Send Change
         </button>
       </div>
     </div>
