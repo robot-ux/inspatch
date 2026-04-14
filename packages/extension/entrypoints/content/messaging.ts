@@ -38,7 +38,6 @@ export function setupMessageListeners(
     sendResponse: (response?: unknown) => void,
   ) => {
     const msg = message as { type?: string };
-    logger.debug('Received message:', msg?.type);
     if (msg?.type === 'start-inspect') {
       inspectMode.start();
       sendResponse({ ok: true });
