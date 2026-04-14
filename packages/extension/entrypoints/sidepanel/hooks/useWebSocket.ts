@@ -46,10 +46,12 @@ export function useWebSocket(url: string) {
     cleanup();
 
     try {
+      console.log("[Inspatch] WebSocket connecting to", urlRef.current);
       const ws = new WebSocket(urlRef.current);
       wsRef.current = ws;
 
       ws.onopen = () => {
+        console.log("[Inspatch] WebSocket connected");
         if (!mountedRef.current) return;
         backoffRef.current = INITIAL_BACKOFF;
         setStatus("connected");
@@ -103,7 +105,8 @@ export function useWebSocket(url: string) {
         reconnectTimeoutRef.current = setTimeout(connect, delay);
       };
 
-      ws.onerror = () => {
+      ws.onerror = (err) => {
+        console.warn("[Inspatch] WebSocket error:", err);
         ws.close();
       };
     } catch {
