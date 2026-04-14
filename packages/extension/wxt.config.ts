@@ -3,6 +3,11 @@ import tailwindcss from '@tailwindcss/vite';
 
 export default defineConfig({
   modules: ['@wxt-dev/module-react'],
+  dev: {
+    server: {
+      port: 3737,
+    },
+  },
   vite: () => ({
     plugins: [tailwindcss()],
   }),
