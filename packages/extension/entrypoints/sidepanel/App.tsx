@@ -12,6 +12,16 @@ const statusConfig: Record<ConnectionStatus, { dotClass: string; label: string }
   disconnected: { dotClass: 'bg-gray-400', label: 'Disconnected' },
 };
 
+function isLocalhostUrl(url: string | undefined): boolean {
+  if (!url) return false;
+  try {
+    const u = new URL(url);
+    return u.hostname === 'localhost' || u.hostname === '127.0.0.1' || u.hostname === '[::1]';
+  } catch {
+    return false;
+  }
+}
+
 export default function App() {
   const { status, lastMessage, send, reconnect } = useWebSocket('ws://localhost:9377');
   const [sidebarState, setSidebarState] = useState<SidebarState>('idle');
@@ -21,6 +31,7 @@ export default function App() {
   const [changeResult, setChangeResult] = useState<ChangeResult | null>(null);
   const [streamedText, setStreamedText] = useState("");
   const activeRequestId = useRef<string | null>(null);
+  const [isLocalhost, setIsLocalhost] = useState(true);
 
   useEffect(() => {
     if (!lastMessage) return;
@@ -53,6 +64,25 @@ export default function App() {
       setError('Content script not loaded — refresh the localhost page and try again');
       throw new Error('Content script not available');
     }
+  }, []);
+
+  useEffect(() => {
+    const checkTab = async () => {
+      const [tab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
+      setIsLocalhost(isLocalhostUrl(tab?.url));
+    };
+    checkTab();
+
+    const onActivated = () => { checkTab(); };
+    const onUpdated = (_tabId: number, info: chrome.tabs.TabChangeInfo) => {
+      if (info.url !== undefined || info.status === 'complete') checkTab();
+    };
+    chrome.tabs.onActivated.addListener(onActivated);
+    chrome.tabs.onUpdated.addListener(onUpdated);
+    return () => {
+      chrome.tabs.onActivated.removeListener(onActivated);
+      chrome.tabs.onUpdated.removeListener(onUpdated);
+    };
   }, []);
 
   useEffect(() => {
@@ -147,10 +177,36 @@ export default function App() {
     send(changeRequest);
   }, [selectedElement, send]);
 
+  if (!isLocalhost) {
+    return (
+      <div className="flex flex-col h-screen bg-white">
+        <div className="flex items-center justify-end px-4 py-2 border-b border-gray-200">
+          <button
+            onClick={status !== 'connected' ? reconnect : undefined}
+            className={`flex items-center gap-2 ${status !== 'connected' ? 'cursor-pointer hover:opacity-80' : 'cursor-default'}`}
+            title={status !== 'connected' ? 'Click to reconnect' : ''}
+          >
+            <div className={`w-2 h-2 rounded-full ${statusConfig[status].dotClass}`} />
+            <span className="text-xs text-gray-500">{statusConfig[status].label}</span>
+          </button>
+        </div>
+        <div className="flex-1 flex flex-col items-center justify-center p-6 gap-3">
+          <div className="w-10 h-10 rounded-full bg-gray-100 flex items-center justify-center">
+            <span className="text-lg text-gray-400">&#128274;</span>
+          </div>
+          <p className="text-sm font-medium text-gray-600 text-center">Localhost only</p>
+          <p className="text-xs text-gray-400 text-center leading-relaxed">
+            Inspatch works with locally-served pages.<br />
+            Navigate to a <span className="font-mono text-gray-500">localhost</span> URL to start inspecting.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="flex flex-col h-screen bg-white">
-      <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200">
-        <h1 className="text-lg font-semibold text-gray-900">Inspatch</h1>
+      <div className="flex items-center justify-end px-4 py-2 border-b border-gray-200">
         <button
           onClick={status !== 'connected' ? reconnect : undefined}
           className={`flex items-center gap-2 ${status !== 'connected' ? 'cursor-pointer hover:opacity-80' : 'cursor-default'}`}
