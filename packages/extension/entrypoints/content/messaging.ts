@@ -52,7 +52,9 @@ export async function sendElementSelection(el: Element): Promise<void> {
 
   try {
     const selector = getUniqueSelector(el);
+    console.log('[Inspatch] Querying fiber for selector:', selector);
     const fiberResult = await queryFiber(selector);
+    console.log('[Inspatch] Fiber result:', fiberResult);
 
     if (fiberResult.componentName) {
       payload.componentName = fiberResult.componentName;

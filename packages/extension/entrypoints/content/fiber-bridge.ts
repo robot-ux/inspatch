@@ -37,11 +37,16 @@ function handleFiberResult(e: Event) {
 export async function initFiberBridge(): Promise<void> {
   try {
     const { injectScript } = await import("wxt/utils/inject-script");
-    const result = await injectScript("/fiber-main-world.js", { keepInDom: true });
+    const result = await injectScript("/fiber-main-world.js", {
+      keepInDom: true,
+      modifyScript(script) {
+        script.addEventListener("inspatch-fiber-result", handleFiberResult);
+      },
+    });
 
     injectedScript = result.script;
-    result.script.addEventListener("inspatch-fiber-result", handleFiberResult);
     bridgeReady = true;
+    console.log("[Inspatch] Fiber bridge ready");
   } catch (err) {
     console.warn("[Inspatch] Fiber bridge injection failed:", err);
     bridgeReady = false;

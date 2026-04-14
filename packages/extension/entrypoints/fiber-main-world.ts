@@ -1,6 +1,10 @@
 export default defineUnlistedScript(() => {
   const scriptEl = document.currentScript;
-  if (!scriptEl) return;
+  if (!scriptEl) {
+    console.warn("[Inspatch] fiber-main-world: document.currentScript is null");
+    return;
+  }
+  console.log("[Inspatch] fiber-main-world loaded");
 
   function getComponentName(fiber: any): string | null {
     const type = fiber.type;
