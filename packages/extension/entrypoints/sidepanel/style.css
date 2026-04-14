@@ -1,5 +1,72 @@
 @import "tailwindcss";
 
+:root {
+  --ip-bg-primary: #0F172A;
+  --ip-bg-secondary: #1E293B;
+  --ip-bg-tertiary: #334155;
+  --ip-bg-card: rgba(30, 41, 59, 0.6);
+  --ip-bg-input: rgba(15, 23, 42, 0.8);
+  --ip-border-subtle: rgba(148, 163, 184, 0.1);
+  --ip-border-muted: rgba(148, 163, 184, 0.2);
+  --ip-border-accent: rgba(99, 102, 241, 0.4);
+  --ip-text-primary: #F1F5F9;
+  --ip-text-secondary: #94A3B8;
+  --ip-text-muted: #64748B;
+  --ip-text-accent: #A5B4FC;
+  --ip-gradient-start: #3B82F6;
+  --ip-gradient-end: #8B5CF6;
+  --ip-accent-solid: #6366F1;
+  --ip-success: #22C55E;
+  --ip-success-muted: rgba(34, 197, 94, 0.15);
+  --ip-warning: #F59E0B;
+  --ip-warning-muted: rgba(245, 158, 11, 0.15);
+  --ip-error: #EF4444;
+  --ip-error-muted: rgba(239, 68, 68, 0.15);
+  --ip-info: #3B82F6;
+  --ip-info-muted: rgba(59, 130, 246, 0.15);
+  --ip-radius-sm: 6px;
+  --ip-radius-md: 8px;
+  --ip-radius-lg: 12px;
+  --ip-shadow-card: 0 1px 3px rgba(0, 0, 0, 0.3), 0 1px 2px rgba(0, 0, 0, 0.2);
+  --ip-shadow-glow-accent: 0 0 12px 2px rgba(99, 102, 241, 0.25);
+  --ip-shadow-glow-error: 0 0 12px 2px rgba(239, 68, 68, 0.25);
+  --ip-shadow-glow-success: 0 0 12px 2px rgba(34, 197, 94, 0.15);
+}
+
+@theme {
+  --color-ip-bg-primary: var(--ip-bg-primary);
+  --color-ip-bg-secondary: var(--ip-bg-secondary);
+  --color-ip-bg-tertiary: var(--ip-bg-tertiary);
+  --color-ip-bg-card: var(--ip-bg-card);
+  --color-ip-bg-input: var(--ip-bg-input);
+  --color-ip-border-subtle: var(--ip-border-subtle);
+  --color-ip-border-muted: var(--ip-border-muted);
+  --color-ip-border-accent: var(--ip-border-accent);
+  --color-ip-text-primary: var(--ip-text-primary);
+  --color-ip-text-secondary: var(--ip-text-secondary);
+  --color-ip-text-muted: var(--ip-text-muted);
+  --color-ip-text-accent: var(--ip-text-accent);
+  --color-ip-gradient-start: var(--ip-gradient-start);
+  --color-ip-gradient-end: var(--ip-gradient-end);
+  --color-ip-accent-solid: var(--ip-accent-solid);
+  --color-ip-success: var(--ip-success);
+  --color-ip-success-muted: var(--ip-success-muted);
+  --color-ip-warning: var(--ip-warning);
+  --color-ip-warning-muted: var(--ip-warning-muted);
+  --color-ip-error: var(--ip-error);
+  --color-ip-error-muted: var(--ip-error-muted);
+  --color-ip-info: var(--ip-info);
+  --color-ip-info-muted: var(--ip-info-muted);
+  --radius-ip-sm: var(--ip-radius-sm);
+  --radius-ip-md: var(--ip-radius-md);
+  --radius-ip-lg: var(--ip-radius-lg);
+  --shadow-ip-card: var(--ip-shadow-card);
+  --shadow-ip-glow-accent: var(--ip-shadow-glow-accent);
+  --shadow-ip-glow-error: var(--ip-shadow-glow-error);
+  --shadow-ip-glow-success: var(--ip-shadow-glow-success);
+  --font-code: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, Courier, monospace;
+}
+
 @keyframes fade-in {
   from { opacity: 0; transform: translateY(6px); }
   to { opacity: 1; transform: translateY(0); }
@@ -17,8 +84,8 @@
   to { opacity: 1; transform: translateY(0); }
 }
 @keyframes glow-pulse {
-  0%, 100% { box-shadow: 0 0 0 0 rgba(59, 130, 246, 0); }
-  50% { box-shadow: 0 0 12px 2px rgba(59, 130, 246, 0.3); }
+  0%, 100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); }
+  50% { box-shadow: 0 0 12px 2px rgba(239, 68, 68, 0.25); }
 }
 @keyframes shimmer {
   0% { background-position: -200% 0; }
@@ -36,7 +103,7 @@
 .animate-glow-pulse { animation: glow-pulse 2s ease-in-out infinite; }
 .animate-status-dot { animation: status-dot 1.5s ease-in-out infinite; }
 .animate-shimmer {
-  background: linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.08) 50%, transparent 100%);
+  background: linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.03) 50%, transparent 100%);
   background-size: 200% 100%;
   animation: shimmer 2s linear infinite;
 }
