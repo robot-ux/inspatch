@@ -146,9 +146,9 @@ Plans:
 **Plans:** 3 plans
 
 Plans:
-- [ ] 08-01-PLAN.md — Design system foundation: CSS tokens, @theme registration, global dark styles
-- [ ] 08-02-PLAN.md — Component decomposition: extract 5 components from App.tsx with dark theme
-- [ ] 08-03-PLAN.md — Processing & input dark theme: rich diff display, gradient buttons
+- [x] 08-01-PLAN.md — Design system foundation: CSS tokens, @theme registration, global dark styles
+- [x] 08-02-PLAN.md — Component decomposition: extract 5 components from App.tsx with dark theme
+- [x] 08-03-PLAN.md — Processing & input dark theme: rich diff display, gradient buttons
 
 **UI hint**: yes
 
