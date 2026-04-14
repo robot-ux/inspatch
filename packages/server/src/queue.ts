@@ -1,7 +1,7 @@
 import type { ServerWebSocket } from "bun";
 import type { ChangeRequest } from "@inspatch/shared";
 import { createLogger } from "@inspatch/shared";
-import { runClaude } from "./claude-runner";
+import { runClaude, getGitDiff, getGitModifiedFiles } from "./claude-runner";
 
 const logger = createLogger("queue");
 
@@ -63,9 +63,12 @@ export class RequestQueue {
       const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
 
       if (result.success) {
-        logger.info(`Done in ${elapsed}s — ${result.filesModified?.length ?? 0} file(s) modified`);
+        const gitFiles = await getGitModifiedFiles(this.projectDir);
+        const diff = await getGitDiff(this.projectDir);
+        const files = gitFiles.length > 0 ? gitFiles : result.filesModified;
+        logger.info(`Done in ${elapsed}s — ${files?.length ?? 0} file(s) modified`);
         this.sendStatus(ws, request.requestId, "complete", "Changes applied successfully");
-        this.sendResult(ws, request.requestId, true, result.resultText, result.filesModified);
+        this.sendResult(ws, request.requestId, true, diff ?? result.resultText, files);
       } else {
         logger.warn(`Failed in ${elapsed}s — ${result.error}`);
         this.sendStatus(ws, request.requestId, "error", result.error ?? "Unknown error");

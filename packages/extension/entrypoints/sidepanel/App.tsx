@@ -107,6 +107,10 @@ export default function App() {
         setSelectedElement(null);
         setSidebarState('idle');
         setError(null);
+        setProcessing(null);
+        setChangeResult(null);
+        setStreamedText("");
+        activeRequestId.current = null;
       }
     };
     chrome.tabs.onUpdated.addListener(onTabUpdated);
@@ -372,11 +376,25 @@ export default function App() {
               statusUpdate={processing}
               changeResult={changeResult}
               streamedText={streamedText}
+              onRetry={() => {
+                setProcessing(null);
+                setChangeResult(null);
+                setStreamedText("");
+                activeRequestId.current = null;
+              }}
             />
           </div>
         )}
       </div>
 
+      {selectedElement && sidebarState !== 'inspecting' && !selectedElement.sourceFile && (
+        <div className="px-4 py-2 bg-amber-50 border-t border-amber-200">
+          <p className="text-[11px] text-amber-600">
+            No source file detected — changes may require manual file lookup.
+            Ensure your dev server has source maps enabled.
+          </p>
+        </div>
+      )}
       {selectedElement && sidebarState !== 'inspecting' && (
         <ChangeInput
           onSend={handleSendChange}

@@ -15,9 +15,10 @@ interface ProcessingStatusProps {
   statusUpdate: StatusUpdate | null;
   changeResult: ChangeResult | null;
   streamedText: string;
+  onRetry?: () => void;
 }
 
-export function ProcessingStatus({ statusUpdate, changeResult, streamedText }: ProcessingStatusProps) {
+export function ProcessingStatus({ statusUpdate, changeResult, streamedText, onRetry }: ProcessingStatusProps) {
   const textRef = useRef<HTMLPreElement>(null);
 
   useEffect(() => {
@@ -38,7 +39,16 @@ export function ProcessingStatus({ statusUpdate, changeResult, streamedText }: P
         </div>
 
         {changeResult.error && (
-          <p className="text-xs text-red-600">{changeResult.error}</p>
+          <div className="space-y-1">
+            <p className="text-xs text-red-600">{changeResult.error}</p>
+            <p className="text-[11px] text-red-400">
+              {changeResult.error.includes("timed out")
+                ? "Try a simpler change description, or increase the server timeout."
+                : changeResult.error.includes("abort")
+                ? "The request was cancelled. Try again when ready."
+                : "Check the server terminal for details. You can try again with a different description."}
+            </p>
+          </div>
         )}
 
         {changeResult.filesModified && changeResult.filesModified.length > 0 && (
@@ -54,6 +64,15 @@ export function ProcessingStatus({ statusUpdate, changeResult, streamedText }: P
           <pre className="text-xs font-mono text-gray-700 bg-white/60 rounded p-2 max-h-48 overflow-y-auto whitespace-pre-wrap break-words">
             {changeResult.diff}
           </pre>
+        )}
+
+        {!changeResult.success && onRetry && (
+          <button
+            onClick={onRetry}
+            className="mt-1 px-3 py-1 bg-red-600 hover:bg-red-700 text-white text-xs font-medium rounded-md transition-colors"
+          >
+            Try Again
+          </button>
         )}
       </div>
     );

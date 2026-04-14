@@ -254,3 +254,33 @@ function extractModifiedFiles(text: string): string[] {
   }
   return [...files];
 }
+
+export async function getGitDiff(projectDir: string): Promise<string | null> {
+  try {
+    const proc = Bun.spawn(["git", "diff", "--stat", "--patch", "--no-color"], {
+      cwd: projectDir,
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    const output = await new Response(proc.stdout).text();
+    await proc.exited;
+    return output.trim() || null;
+  } catch {
+    return null;
+  }
+}
+
+export async function getGitModifiedFiles(projectDir: string): Promise<string[]> {
+  try {
+    const proc = Bun.spawn(["git", "diff", "--name-only"], {
+      cwd: projectDir,
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    const output = await new Response(proc.stdout).text();
+    await proc.exited;
+    return output.trim().split("\n").filter(Boolean);
+  } catch {
+    return [];
+  }
+}
