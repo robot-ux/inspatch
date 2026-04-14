@@ -1,0 +1,28 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Inspatch Server",
+      "type": "bun",
+      "request": "launch",
+      "program": "${workspaceFolder}/packages/server/src/index.ts",
+      "cwd": "${workspaceFolder}/packages/server",
+      "stopOnEntry": false
+    },
+    {
+      "name": "Extension Dev (WXT)",
+      "type": "node",
+      "request": "launch",
+      "runtimeExecutable": "bun",
+      "runtimeArgs": ["run", "dev"],
+      "cwd": "${workspaceFolder}/packages/extension",
+      "console": "integratedTerminal"
+    }
+  ],
+  "compounds": [
+    {
+      "name": "Inspatch: Full Dev",
+      "configurations": ["Inspatch Server", "Extension Dev (WXT)"]
+    }
+  ]
+}
