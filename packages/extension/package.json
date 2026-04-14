@@ -12,7 +12,8 @@
   "dependencies": {
     "@inspatch/shared": "workspace:*",
     "react": "^19.0.0",
-    "react-dom": "^19.0.0"
+    "react-dom": "^19.0.0",
+    "source-map-js": "^1.2.1"
   },
   "devDependencies": {
     "@tailwindcss/vite": "^4.2.0",

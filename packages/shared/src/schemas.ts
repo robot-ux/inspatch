@@ -19,8 +19,10 @@ export const ElementSelectionSchema = z.object({
     height: z.number(),
   }),
   componentName: z.string().optional(),
+  parentChain: z.array(z.string()).optional(),
   sourceFile: z.string().optional(),
   sourceLine: z.number().optional(),
+  sourceColumn: z.number().optional(),
 });
 
 export const ChangeRequestSchema = z.object({
@@ -29,6 +31,7 @@ export const ChangeRequestSchema = z.object({
   description: z.string().min(1),
   elementXpath: z.string(),
   componentName: z.string().optional(),
+  parentChain: z.array(z.string()).optional(),
   sourceFile: z.string().optional(),
   sourceLine: z.number().optional(),
   screenshotDataUrl: z.string().optional(),
