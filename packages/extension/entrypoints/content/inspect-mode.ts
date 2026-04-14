@@ -90,24 +90,27 @@ export class InspectMode {
     positionOverlayLayers(target, this.layers);
   }
 
+  highlightElement(el: Element) {
+    mountOverlay(this.host);
+    showLayers(this.layers);
+    positionOverlayLayers(el, this.layers);
+  }
+
+  clearHighlight() {
+    hideLayers(this.layers);
+    unmountOverlay(this.host);
+  }
+
   private handleClick(e: MouseEvent) {
     e.preventDefault();
     e.stopPropagation();
     e.stopImmediatePropagation();
 
-    if (!e.altKey) return;
     if (!this.currentTarget) return;
 
-    this.state = 'selected';
     this.selectedElement = this.currentTarget;
-    positionOverlayLayers(this.selectedElement, this.layers);
     this.onSelectCb(this.selectedElement);
-
-    this.stopRafLoop();
-
-    if (this.boundHandlers.mousemove) {
-      document.removeEventListener('mousemove', this.boundHandlers.mousemove, true);
-    }
+    this.stop();
   }
 
   private handleKeyDown(e: KeyboardEvent) {

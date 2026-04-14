@@ -1,7 +1,10 @@
 import type { InspectMode } from './inspect-mode';
 import { getXPath } from './element-detector';
 
-export function setupMessageListeners(inspectMode: InspectMode): () => void {
+export function setupMessageListeners(
+  inspectMode: InspectMode,
+  getLastSelected: () => Element | null,
+): () => void {
   const handler = (
     message: unknown,
     _sender: chrome.runtime.MessageSender,
@@ -13,6 +16,13 @@ export function setupMessageListeners(inspectMode: InspectMode): () => void {
       sendResponse({ ok: true });
     } else if (msg?.type === 'stop-inspect') {
       inspectMode.stop();
+      sendResponse({ ok: true });
+    } else if (msg?.type === 'highlight-element') {
+      const el = getLastSelected();
+      if (el) inspectMode.highlightElement(el);
+      sendResponse({ ok: !!el });
+    } else if (msg?.type === 'clear-highlight') {
+      inspectMode.clearHighlight();
       sendResponse({ ok: true });
     }
     return true;
