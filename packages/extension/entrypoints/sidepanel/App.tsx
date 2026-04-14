@@ -1,6 +1,9 @@
 import { useState, useEffect, useCallback } from 'react';
-import type { ElementSelection } from '@inspatch/shared';
+import type { ElementSelection, ChangeRequest } from '@inspatch/shared';
 import { useWebSocket, type ConnectionStatus } from './hooks/useWebSocket';
+import { useScreenshot } from './hooks/useScreenshot';
+import { ScreenshotView } from './components/ScreenshotView';
+import { ChangeInput } from './components/ChangeInput';
 
 type SidebarState = 'idle' | 'inspecting' | 'selected';
 
@@ -15,6 +18,7 @@ export default function App() {
   const [sidebarState, setSidebarState] = useState<SidebarState>('idle');
   const [selectedElement, setSelectedElement] = useState<ElementSelection | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const { screenshotUrl, isCapturing, capture: captureScreenshot, clear: clearScreenshot } = useScreenshot();
 
   const sendToContentScript = useCallback(async (message: { type: string }) => {
     setError(null);
@@ -36,8 +40,10 @@ export default function App() {
       if (message && typeof message === 'object' && 'type' in message) {
         const msg = message as { type: string };
         if (msg.type === 'element_selection') {
-          setSelectedElement(message as ElementSelection);
-          setSidebarState('selected');
+          const selection = message as ElementSelection;
+          setSelectedElement(selection);
+          setSidebarState('idle');
+          captureScreenshot(selection.boundingRect, selection.devicePixelRatio ?? 1);
         } else if (msg.type === 'inspect-stopped') {
           setSidebarState('idle');
         }
@@ -60,10 +66,12 @@ export default function App() {
     } catch { /* ignore */ }
     setSidebarState('idle');
     setSelectedElement(null);
-  }, [sendToContentScript]);
+    clearScreenshot();
+  }, [sendToContentScript, clearScreenshot]);
 
   const handleInspectAgain = useCallback(async () => {
     setSelectedElement(null);
+    clearScreenshot();
     try {
       await sendToContentScript({ type: 'start-inspect' });
       setSidebarState('inspecting');
@@ -81,6 +89,25 @@ export default function App() {
       await sendToContentScript({ type: 'clear-highlight' });
     } catch { /* ignore */ }
   }, [sendToContentScript]);
+
+  const handleSendChange = useCallback((description: string) => {
+    if (!selectedElement) return;
+    const changeRequest: ChangeRequest = {
+      type: 'change_request',
+      requestId: crypto.randomUUID(),
+      description,
+      elementXpath: selectedElement.xpath,
+      componentName: selectedElement.componentName,
+      parentChain: selectedElement.parentChain,
+      sourceFile: selectedElement.sourceFile,
+      sourceLine: selectedElement.sourceLine,
+      sourceColumn: selectedElement.sourceColumn,
+      screenshotDataUrl: screenshotUrl ?? undefined,
+      boundingRect: selectedElement.boundingRect,
+      computedStyles: selectedElement.computedStyles,
+    };
+    send(changeRequest);
+  }, [selectedElement, screenshotUrl, send]);
 
   return (
     <div className="flex flex-col h-screen bg-white">
@@ -151,6 +178,7 @@ export default function App() {
           </div>
         )}
         {selectedElement && sidebarState !== 'inspecting' && (
+          <>
           <div
             className="bg-gray-50 rounded-lg border border-gray-200 p-4 space-y-2 cursor-pointer hover:border-blue-400 hover:bg-blue-50/30 transition-colors"
             onMouseEnter={handleElementHover}
@@ -217,8 +245,19 @@ export default function App() {
               )}
             </div>
           </div>
+          <div className="mt-3">
+            <ScreenshotView screenshotUrl={screenshotUrl} isCapturing={isCapturing} />
+          </div>
+          </>
         )}
       </div>
+
+      {selectedElement && sidebarState !== 'inspecting' && (
+        <ChangeInput
+          onSend={handleSendChange}
+          disabled={status !== 'connected'}
+        />
+      )}
     </div>
   );
 }
