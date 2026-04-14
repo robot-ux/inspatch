@@ -68,7 +68,11 @@ Plans:
   3. Messages between extension and server are validated against shared Zod schemas on both ends
   4. Server correctly queues multiple requests and processes them serially (no concurrent file modifications)
   5. WebSocket connection survives service worker restarts via chrome.storage.session persistence
-**Plans**: TBD
+**Plans:** 2 plans
+
+Plans:
+- [ ] 03-01-PLAN.md — Shared schema extensions + Bun WebSocket server with serial queue
+- [ ] 03-02-PLAN.md — Extension WebSocket client hook + sidebar connection status wiring
 
 ### Phase 4: React Fiber Detection & Source Map Resolution
 **Goal**: Selected elements are traced back to their React component name and original source file location
