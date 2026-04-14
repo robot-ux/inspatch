@@ -6,8 +6,8 @@ const logger = createLogger("ws");
 
 export const SERVER_VERSION = "0.0.1";
 
-export function createServer(port: number): Server<WSData> {
-  const queue = new RequestQueue();
+export function createServer(port: number, projectDir: string): Server<WSData> {
+  const queue = new RequestQueue(projectDir);
 
   const server = Bun.serve<WSData>({
     hostname: "127.0.0.1",

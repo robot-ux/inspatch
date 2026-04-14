@@ -1,5 +1,9 @@
 import type { ServerWebSocket } from "bun";
 import type { ChangeRequest } from "@inspatch/shared";
+import { createLogger } from "@inspatch/shared";
+import { runClaude } from "./claude-runner";
+
+const logger = createLogger("queue");
 
 export type WSData = {
   connectedAt: number;
@@ -15,6 +19,11 @@ interface QueuedRequest {
 export class RequestQueue {
   private queue: QueuedRequest[] = [];
   private processing = false;
+  private projectDir: string;
+
+  constructor(projectDir: string) {
+    this.projectDir = projectDir;
+  }
 
   get length(): number {
     return this.queue.length;
@@ -26,6 +35,9 @@ export class RequestQueue {
 
   enqueue(request: ChangeRequest, ws: ServerWebSocket<WSData>): void {
     this.queue.push({ request, ws, enqueuedAt: Date.now() });
+    if (this.queue.length > 1) {
+      this.sendStatus(ws, request.requestId, "queued", `Position ${this.queue.length} in queue`);
+    }
     this.process();
   }
 
@@ -36,10 +48,30 @@ export class RequestQueue {
     const item = this.queue.shift()!;
     const { request, ws } = item;
 
-    this.sendStatus(ws, request.requestId, "queued", "Request received and queued for processing");
+    logger.info(`Processing change request: "${request.description.slice(0, 80)}"`);
 
-    // Phase 6 wires actual Claude Code invocation here
-    this.sendStatus(ws, request.requestId, "complete", "Processing pipeline not yet connected");
+    try {
+      const result = await runClaude(
+        request,
+        this.projectDir,
+        (status, message, streamText) => {
+          this.sendStatus(ws, request.requestId, status, message, streamText);
+        },
+      );
+
+      if (result.success) {
+        this.sendStatus(ws, request.requestId, "complete", "Changes applied successfully");
+        this.sendResult(ws, request.requestId, true, result.resultText, result.filesModified);
+      } else {
+        this.sendStatus(ws, request.requestId, "error", result.error ?? "Unknown error");
+        this.sendResult(ws, request.requestId, false, undefined, undefined, result.error);
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Unexpected error";
+      logger.error("Processing failed:", msg);
+      this.sendStatus(ws, request.requestId, "error", msg);
+      this.sendResult(ws, request.requestId, false, undefined, undefined, msg);
+    }
 
     this.processing = false;
     this.process();
@@ -50,9 +82,34 @@ export class RequestQueue {
     requestId: string | undefined,
     status: string,
     message: string,
+    streamText?: string,
   ): void {
     const payload: Record<string, unknown> = { type: "status_update", status, message };
     if (requestId) payload.requestId = requestId;
+    if (streamText) payload.streamText = streamText;
+    try {
+      ws.send(JSON.stringify(payload));
+    } catch {
+      // Client may have disconnected
+    }
+  }
+
+  private sendResult(
+    ws: ServerWebSocket<WSData>,
+    requestId: string | undefined,
+    success: boolean,
+    resultText?: string,
+    filesModified?: string[],
+    error?: string,
+  ): void {
+    const payload: Record<string, unknown> = {
+      type: "change_result",
+      success,
+    };
+    if (requestId) payload.requestId = requestId;
+    if (resultText) payload.diff = resultText;
+    if (filesModified?.length) payload.filesModified = filesModified;
+    if (error) payload.error = error;
     try {
       ws.send(JSON.stringify(payload));
     } catch {

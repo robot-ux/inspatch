@@ -1,7 +1,8 @@
-import { useState, useEffect, useCallback } from 'react';
-import type { ElementSelection, ChangeRequest } from '@inspatch/shared';
+import { useState, useEffect, useCallback, useRef } from 'react';
+import type { ElementSelection, ChangeRequest, StatusUpdate, ChangeResult } from '@inspatch/shared';
 import { useWebSocket, type ConnectionStatus } from './hooks/useWebSocket';
 import { ChangeInput } from './components/ChangeInput';
+import { ProcessingStatus } from './components/ProcessingStatus';
 
 type SidebarState = 'idle' | 'inspecting' | 'selected';
 
@@ -16,6 +17,28 @@ export default function App() {
   const [sidebarState, setSidebarState] = useState<SidebarState>('idle');
   const [selectedElement, setSelectedElement] = useState<ElementSelection | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [processing, setProcessing] = useState<StatusUpdate | null>(null);
+  const [changeResult, setChangeResult] = useState<ChangeResult | null>(null);
+  const [streamedText, setStreamedText] = useState("");
+  const activeRequestId = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (!lastMessage) return;
+    if (lastMessage.type === 'status_update') {
+      const su = lastMessage as StatusUpdate;
+      if (activeRequestId.current && su.requestId && su.requestId !== activeRequestId.current) return;
+      setProcessing(su);
+      if (su.streamText) {
+        setStreamedText((prev) => prev + su.streamText);
+      }
+    } else if (lastMessage.type === 'change_result') {
+      const cr = lastMessage as ChangeResult;
+      if (activeRequestId.current && cr.requestId && cr.requestId !== activeRequestId.current) return;
+      setChangeResult(cr);
+      setProcessing(null);
+      activeRequestId.current = null;
+    }
+  }, [lastMessage]);
 
   const sendToContentScript = useCallback(async (message: { type: string }) => {
     setError(null);
@@ -101,9 +124,15 @@ export default function App() {
 
   const handleSendChange = useCallback((description: string, imageDataUrl?: string) => {
     if (!selectedElement) return;
+    const requestId = crypto.randomUUID();
+    activeRequestId.current = requestId;
+    setProcessing(null);
+    setChangeResult(null);
+    setStreamedText("");
+
     const changeRequest: ChangeRequest = {
       type: 'change_request',
-      requestId: crypto.randomUUID(),
+      requestId,
       description,
       elementXpath: selectedElement.xpath,
       componentName: selectedElement.componentName,
@@ -254,12 +283,22 @@ export default function App() {
             </div>
           </div>
         )}
+
+        {selectedElement && sidebarState !== 'inspecting' && (processing || changeResult) && (
+          <div className="mt-3">
+            <ProcessingStatus
+              statusUpdate={processing}
+              changeResult={changeResult}
+              streamedText={streamedText}
+            />
+          </div>
+        )}
       </div>
 
       {selectedElement && sidebarState !== 'inspecting' && (
         <ChangeInput
           onSend={handleSendChange}
-          disabled={status !== 'connected'}
+          disabled={status !== 'connected' || !!processing}
         />
       )}
     </div>

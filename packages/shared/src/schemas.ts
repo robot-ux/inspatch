@@ -50,6 +50,7 @@ export const StatusUpdateSchema = z.object({
   status: z.enum(["queued", "analyzing", "locating", "generating", "applying", "complete", "error"]),
   message: z.string(),
   progress: z.number().min(0).max(100).optional(),
+  streamText: z.string().optional(),
 });
 
 export const ChangeResultSchema = z.object({
