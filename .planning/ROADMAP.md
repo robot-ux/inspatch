@@ -19,6 +19,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [ ] **Phase 5: Screenshot Capture & Context Assembly** - Element screenshot, natural language input, structured ChangeRequest payload
 - [ ] **Phase 6: Claude Code CLI Integration** - CLI invocation with structured prompts, streaming output, hot-reload confirmation
 - [ ] **Phase 7: End-to-End Integration & Polish** - Full click-to-change pipeline, streaming status UI, error recovery
+- [ ] **Phase 8: UI Design System & Visual Overhaul** - Dark theme, design tokens, component library, cohesive visual identity
 
 ## Phase Details
 
@@ -129,6 +130,19 @@ Plans:
   3. After successful change, sidebar displays a git diff summary of what was modified
   4. Error states (disconnected server, CLI failure, invalid element) show clear recovery guidance
   5. Edge cases are handled: dynamically rendered elements, scrolled-off-screen elements, stale source maps
+**Plans**: TBD
+**UI hint**: yes
+
+### Phase 8: UI Design System & Visual Overhaul
+**Goal**: Establish Inspatch's own design system and rebuild the sidebar UI with a dark, techy aesthetic — consistent tokens, polished components, smooth interactions
+**Depends on**: Phase 7
+**Requirements**: SIDE-04, SIDE-05
+**Success Criteria** (what must be TRUE):
+  1. Design tokens (colors, spacing, typography, radii, shadows) defined as CSS custom properties
+  2. All sidebar states (disconnected, idle, inspecting, selected, processing, result, error) use the dark theme consistently
+  3. Element info card, processing status, change input, and error states feel cohesive and "tool-grade"
+  4. Animations are smooth and purposeful — no jarring transitions
+  5. The extension looks distinctly "Inspatch" — not generic Tailwind defaults
 **Plans**: TBD
 **UI hint**: yes
 

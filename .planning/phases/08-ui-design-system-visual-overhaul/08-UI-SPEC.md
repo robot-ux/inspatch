@@ -100,7 +100,9 @@ Declared values (multiples of 4):
 | 2xl | 32px | Layout-level spacing |
 | 3xl | 48px | Hero/empty state vertical centering gaps |
 
-Exceptions: 6px border-radius on small elements (buttons, badges) — not a spacing token but noted for consistency.
+**Project override:** 12px (3×4) added to the standard set {4, 8, 16, 24, 32, 48, 64} — the 8→16 gap is too coarse for a ~320px sidebar panel where compact density is essential. All values remain 4px-grid-aligned.
+
+Exceptions: border-radius uses its own token scale (4px, 8px, 12px) — not spacing tokens but noted for consistency.
 
 ---
 
@@ -135,8 +137,8 @@ Exceptions: 6px border-radius on small elements (buttons, badges) — not a spac
 | Element | Treatment |
 |---------|-----------|
 | "Start Inspect" button | Gradient background |
-| "Send" button | Gradient background |
-| "Reconnect" button | Gradient background |
+| "Send Change" button | Gradient background |
+| "Reconnect" button | Gradient background (outline variant) |
 | Connected status dot | Solid `#22C55E` (success green, NOT accent) |
 | Processing spinner border | `--ip-gradient-start` (#3B82F6) |
 | Element info card hover border | `--ip-border-accent` glow |
@@ -268,7 +270,7 @@ Exceptions: 6px border-radius on small elements (buttons, badges) — not a spac
   - Focus: border `--ip-border-accent`, ring `rgba(99, 102, 241, 0.2)` 2px
   - Rows: 3
 - **Pasted image preview:** max-height 112px, `--ip-radius-md` corners, border `--ip-border-subtle`
-  - Remove button: 20px circle, `--ip-bg-tertiary` background, `--ip-text-primary`
+  - Remove button: 20px circle, `--ip-bg-tertiary` background, `--ip-text-primary`, `aria-label="Remove image"`, tooltip on hover
 - **Send button:**
   - Background: `linear-gradient(135deg, var(--ip-gradient-start), var(--ip-gradient-end))`
   - Text: 13px semibold, white
@@ -319,7 +321,7 @@ Existing animations (preserve and adapt for dark theme):
 
 | Name | Duration | Easing | Keyframes | Used For |
 |------|----------|--------|-----------|----------|
-| `fade-in` | 0.25s | ease-out | opacity 0→1, translateY(6px→0) | State transitions, content appearance |
+| `fade-in` | 0.25s | ease-out | opacity 0→1, translateY(8px→0) | State transitions, content appearance |
 | `fade-in-scale` | 0.2s | ease-out | opacity 0→1, scale(0.95→1) | Result cards, image previews |
 | `slide-up` | 0.3s | ease-out | opacity 0→1, translateY(12px→0) | Element info card, input area |
 | `slide-down` | 0.2s | ease-out | opacity 0→1, translateY(-8px→0) | Error banners, dropdown content |
@@ -341,9 +343,9 @@ Existing animations (preserve and adapt for dark theme):
 | Element | Copy |
 |---------|------|
 | Primary CTA | "Start Inspect" |
-| Secondary CTA | "Send" (change description submission) |
+| Secondary CTA | "Send Change" (change description submission) |
 | Re-inspect CTA | "Inspect Again" |
-| Cancel CTA | "Clear" |
+| Cancel CTA | "Clear Selection" |
 | Danger CTA | "Stop Inspect" |
 | Retry CTA | "Try Again" |
 | Empty state heading (connected) | — (no heading, just body) |
@@ -367,6 +369,22 @@ Existing animations (preserve and adapt for dark theme):
 
 ---
 
+## Visual Hierarchy Per State
+
+| State | Focal Point | Supporting Elements |
+|-------|-------------|---------------------|
+| Not Localhost | Lock icon + "Localhost only" heading | Explanatory body text |
+| Disconnected | Terminal command block (dark card) | Reconnect button, requirements note |
+| Connected Idle | "Start Inspect" gradient button | Status dot |
+| Inspecting | Spinner + instruction text | Stop Inspect glow button |
+| Element Selected | Element Info Card (tag + component) | Source file path, change input |
+| Processing | Spinner + status label | Streamed text output, shimmer |
+| Result Success | "Changes applied" header + file list | Git diff preview |
+| Result Error | Error message + recovery guidance | Try Again button |
+| No Source Warning | Amber warning banner | Change input below |
+
+---
+
 ## State Transition Map
 
 ```
@@ -387,7 +405,7 @@ Existing animations (preserve and adapt for dark theme):
        │  (no source file)   │
        │  └─ [No Source Warning] shown above input
        │
-       ▼ "Send" clicked
+       ▼ "Send Change" clicked
 [Processing] ──── status_update messages cycle through:
        │           queued → analyzing → locating → generating → applying
        │
@@ -427,17 +445,17 @@ No component registry in use. All components are hand-crafted for this extension
 - Scrollbar track: `--ip-bg-primary`
 - Scrollbar thumb: `--ip-bg-tertiary`
 - Scrollbar thumb hover: `--ip-text-muted`
-- Width: 6px (thin scrollbar for compact sidebar)
+- Width: 4px (thin scrollbar for compact sidebar)
 
 ---
 
 ## Checker Sign-Off
 
-- [ ] Dimension 1 Copywriting: PASS
-- [ ] Dimension 2 Visuals: PASS
-- [ ] Dimension 3 Color: PASS
-- [ ] Dimension 4 Typography: PASS
-- [ ] Dimension 5 Spacing: PASS
-- [ ] Dimension 6 Registry Safety: PASS
+- [x] Dimension 1 Copywriting: PASS (FLAG: resolved — state map aligned)
+- [x] Dimension 2 Visuals: PASS
+- [x] Dimension 3 Color: PASS
+- [x] Dimension 4 Typography: PASS
+- [x] Dimension 5 Spacing: PASS (project override 12px documented, 6px→4/8px)
+- [x] Dimension 6 Registry Safety: PASS
 
 **Approval:** pending
