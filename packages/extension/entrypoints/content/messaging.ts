@@ -1,7 +1,10 @@
+import { createLogger } from '@inspatch/shared';
 import type { InspectMode } from './inspect-mode';
 import { getXPath, getUniqueSelector } from './element-detector';
 import { queryFiber } from './fiber-bridge';
 import { resolveSourceLocation, findComponentSource } from './source-resolver';
+
+const logger = createLogger('messaging');
 
 export function setupMessageListeners(
   inspectMode: InspectMode,
@@ -13,6 +16,7 @@ export function setupMessageListeners(
     sendResponse: (response?: unknown) => void,
   ) => {
     const msg = message as { type?: string };
+    logger.debug('Received message:', msg?.type);
     if (msg?.type === 'start-inspect') {
       inspectMode.start();
       sendResponse({ ok: true });
@@ -87,5 +91,6 @@ export async function sendElementSelection(el: Element): Promise<void> {
     // Enrichment failed — send basic payload without component info
   }
 
+  logger.debug('Sending element selection:', payload.tagName, payload.componentName ?? '(no component)');
   chrome.runtime.sendMessage(payload).catch(() => {});
 }

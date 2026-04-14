@@ -1,3 +1,7 @@
+import { createLogger } from '@inspatch/shared';
+
+const logger = createLogger('fiber');
+
 export interface FiberResult {
   componentName: string | null;
   parentChain: string[];
@@ -45,11 +49,13 @@ export function initFiberBridge(): Promise<void> {
       script.onload = () => {
         injectedScript = script;
         bridgeReady = true;
+        logger.debug('Fiber bridge ready');
         resolve();
       };
 
       script.onerror = () => {
         bridgeReady = false;
+        logger.warn('Fiber bridge script failed to load');
         resolve();
       };
 

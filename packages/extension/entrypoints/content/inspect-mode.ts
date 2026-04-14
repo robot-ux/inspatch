@@ -1,3 +1,4 @@
+import { createLogger } from '@inspatch/shared';
 import type { OverlayLayers } from './overlay-manager';
 import {
   positionOverlayLayers,
@@ -7,6 +8,8 @@ import {
   hideLayers,
 } from './overlay-manager';
 import { getElementAtPoint } from './element-detector';
+
+const logger = createLogger('inspect');
 
 export type InspectState = 'idle' | 'inspecting' | 'selected';
 
@@ -38,6 +41,7 @@ export class InspectMode {
 
   start() {
     if (this.state !== 'idle') return;
+    logger.debug('Inspect mode started');
     this.state = 'inspecting';
     mountOverlay(this.host);
     showLayers(this.layers);
@@ -54,6 +58,7 @@ export class InspectMode {
   }
 
   stop() {
+    logger.debug('Inspect mode stopped');
     this.state = 'idle';
     this.stopRafLoop();
     hideLayers(this.layers);
