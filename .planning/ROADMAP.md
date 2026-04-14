@@ -143,7 +143,13 @@ Plans:
   3. Element info card, processing status, change input, and error states feel cohesive and "tool-grade"
   4. Animations are smooth and purposeful — no jarring transitions
   5. The extension looks distinctly "Inspatch" — not generic Tailwind defaults
-**Plans**: TBD
+**Plans:** 3 plans
+
+Plans:
+- [ ] 08-01-PLAN.md — Design system foundation: CSS tokens, @theme registration, global dark styles
+- [ ] 08-02-PLAN.md — Component decomposition: extract 5 components from App.tsx with dark theme
+- [ ] 08-03-PLAN.md — Processing & input dark theme: rich diff display, gradient buttons
+
 **UI hint**: yes
 
 ## Requirement Coverage
@@ -181,15 +187,15 @@ Plans:
 | CLI-03 | Phase 6 |
 | CLI-04 | Phase 6 |
 | SERV-04 | Phase 6 |
-| SIDE-04 | Phase 7 |
-| SIDE-05 | Phase 7 |
+| SIDE-04 | Phase 7, Phase 8 |
+| SIDE-05 | Phase 7, Phase 8 |
 
 **Coverage:** 33/33 ✓
 
 ## Progress
 
 **Execution Order:**
-Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7
+Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8
 Note: Phases 2 and 3 can execute in parallel (independent dependencies).
 
 | Phase | Plans Complete | Status | Completed |
