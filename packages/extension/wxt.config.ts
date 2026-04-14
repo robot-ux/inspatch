@@ -19,7 +19,7 @@ export default defineConfig({
     web_accessible_resources: [
       {
         resources: ['fiber-main-world.js'],
-        matches: ['http://localhost:*/*'],
+        matches: ['http://localhost/*'],
       },
     ],
     action: {},
