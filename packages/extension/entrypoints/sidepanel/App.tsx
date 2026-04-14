@@ -7,7 +7,7 @@ import { ProcessingStatus } from './components/ProcessingStatus';
 type SidebarState = 'idle' | 'inspecting' | 'selected';
 
 const statusConfig: Record<ConnectionStatus, { dotClass: string; label: string }> = {
-  connected: { dotClass: 'bg-green-500', label: 'Connected' },
+  connected: { dotClass: 'bg-green-500 animate-status-dot', label: 'Connected' },
   reconnecting: { dotClass: 'bg-yellow-500 animate-pulse', label: 'Reconnecting...' },
   disconnected: { dotClass: 'bg-gray-400', label: 'Disconnected' },
 };
@@ -194,7 +194,7 @@ export default function App() {
             <span className="text-xs text-gray-500">{statusConfig[status].label}</span>
           </button>
         </div>
-        <div className="flex-1 flex flex-col items-center justify-center p-6 gap-3">
+        <div className="flex-1 flex flex-col items-center justify-center p-6 gap-3 animate-fade-in">
           <div className="w-10 h-10 rounded-full bg-gray-100 flex items-center justify-center">
             <span className="text-lg text-gray-400">&#128274;</span>
           </div>
@@ -224,7 +224,7 @@ export default function App() {
       </div>
 
       {error && (
-        <div className="px-4 py-2 bg-amber-50 border-b border-amber-200">
+        <div className="px-4 py-2 bg-amber-50 border-b border-amber-200 animate-slide-down">
           <p className="text-xs text-amber-700">{error}</p>
         </div>
       )}
@@ -258,7 +258,8 @@ export default function App() {
         {sidebarState === 'inspecting' && (
           <button
             onClick={handleStopInspect}
-            className="w-full py-2 px-4 bg-red-600 hover:bg-red-700 text-white text-sm font-medium rounded-lg transition-colors"
+            className="w-full py-2 px-4 bg-red-600 hover:bg-red-700 text-white text-sm font-medium rounded-lg transition-colors animate-glow-pulse"
+            style={{ '--tw-shadow-color': 'rgba(220, 38, 38, 0.3)' } as React.CSSProperties}
           >
             Stop Inspect
           </button>
@@ -267,7 +268,7 @@ export default function App() {
 
       <div className="flex-1 overflow-y-auto p-4">
         {sidebarState !== 'inspecting' && !selectedElement && status !== 'connected' && (
-          <div className="flex flex-col items-center justify-center h-full gap-4 px-2">
+          <div className="flex flex-col items-center justify-center h-full gap-4 px-2 animate-fade-in">
             <p className="text-sm text-gray-500 text-center">
               Server not connected. Start the Inspatch server:
             </p>
@@ -288,22 +289,25 @@ export default function App() {
           </div>
         )}
         {sidebarState !== 'inspecting' && !selectedElement && status === 'connected' && (
-          <div className="flex items-center justify-center h-full">
+          <div className="flex items-center justify-center h-full animate-fade-in">
             <p className="text-sm text-gray-400 text-center">
               Select an element to get started
             </p>
           </div>
         )}
         {sidebarState === 'inspecting' && (
-          <div className="flex items-center justify-center h-full">
-            <p className="text-sm text-gray-500 text-center">
-              Click any element on the page to select it
-            </p>
+          <div className="flex items-center justify-center h-full animate-fade-in">
+            <div className="flex flex-col items-center gap-3">
+              <div className="w-8 h-8 rounded-full border-2 border-blue-500 border-t-transparent animate-spin" />
+              <p className="text-sm text-gray-500 text-center">
+                Click any element on the page to select it
+              </p>
+            </div>
           </div>
         )}
         {selectedElement && sidebarState !== 'inspecting' && (
           <div
-            className="bg-gray-50 rounded-lg border border-gray-200 p-4 space-y-2 cursor-pointer hover:border-blue-400 hover:bg-blue-50/30 transition-colors"
+            className="bg-gray-50 rounded-lg border border-gray-200 p-4 space-y-2 cursor-pointer hover:border-blue-400 hover:bg-blue-50/30 transition-all duration-200 hover:shadow-md animate-slide-up"
             onMouseEnter={handleElementHover}
             onMouseLeave={handleElementLeave}
           >
@@ -371,7 +375,7 @@ export default function App() {
         )}
 
         {selectedElement && sidebarState !== 'inspecting' && (processing || changeResult) && (
-          <div className="mt-3">
+          <div className="mt-3 animate-fade-in-scale">
             <ProcessingStatus
               statusUpdate={processing}
               changeResult={changeResult}

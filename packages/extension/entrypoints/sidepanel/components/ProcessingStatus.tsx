@@ -31,7 +31,7 @@ export function ProcessingStatus({ statusUpdate, changeResult, streamedText, onR
 
   if (changeResult) {
     return (
-      <div className={`rounded-lg border p-4 space-y-2 ${changeResult.success ? "border-green-200 bg-green-50" : "border-red-200 bg-red-50"}`}>
+      <div className={`rounded-lg border p-4 space-y-2 animate-fade-in-scale ${changeResult.success ? "border-green-200 bg-green-50" : "border-red-200 bg-red-50"}`}>
         <div className="flex items-center gap-2">
           <span className={`text-sm font-medium ${changeResult.success ? "text-green-700" : "text-red-700"}`}>
             {changeResult.success ? "Changes applied" : "Failed"}
@@ -83,12 +83,15 @@ export function ProcessingStatus({ statusUpdate, changeResult, streamedText, onR
     const isActive = statusUpdate.status !== "complete" && statusUpdate.status !== "error";
 
     return (
-      <div className="rounded-lg border border-blue-200 bg-blue-50 p-4 space-y-2">
+      <div className="rounded-lg border border-blue-200 bg-blue-50 p-4 space-y-2 relative overflow-hidden">
+        {isActive && (
+          <div className="absolute inset-0 animate-shimmer pointer-events-none" />
+        )}
         <div className="flex items-center gap-2">
           {isActive && (
             <div className="w-3 h-3 border-2 border-blue-600 border-t-transparent rounded-full animate-spin" />
           )}
-          <span className={`text-sm font-medium ${config.color}`}>
+          <span className={`text-sm font-medium transition-colors duration-300 ${config.color}`}>
             {config.label}
           </span>
         </div>

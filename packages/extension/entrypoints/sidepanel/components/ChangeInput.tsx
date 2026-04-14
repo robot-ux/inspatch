@@ -60,9 +60,9 @@ export function ChangeInput({ onSend, disabled }: ChangeInputProps) {
   const removeImage = useCallback(() => setImageDataUrl(null), []);
 
   return (
-    <div className="border-t border-gray-200 p-3 bg-white">
+    <div className="border-t border-gray-200 p-3 bg-white animate-slide-up">
       {imageDataUrl && (
-        <div className="relative mb-2 inline-block">
+        <div className="relative mb-2 inline-block animate-fade-in-scale">
           <img
             src={imageDataUrl}
             alt="Pasted screenshot"
