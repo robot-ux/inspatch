@@ -132,6 +132,13 @@
   box-shadow: 0 0 0 2px var(--ip-border-accent), var(--ip-shadow-glow-accent);
 }
 
+button, [role="button"], a {
+  cursor: pointer;
+}
+button:disabled {
+  cursor: not-allowed;
+}
+
 body {
   background-color: var(--ip-bg-primary);
   color: var(--ip-text-primary);
