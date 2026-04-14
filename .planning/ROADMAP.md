@@ -100,7 +100,12 @@ Plans:
   2. Screenshot of the selected element appears in the sidebar alongside element info
   3. User can type a natural language change description in the sidebar input
   4. A complete ChangeRequest payload (component, file, line, styles, screenshot, description) is assembled
-**Plans**: TBD
+**Plans:** 2 plans
+
+Plans:
+- [ ] 05-01-PLAN.md — Schema extensions + content script DPR/computed styles enrichment
+- [ ] 05-02-PLAN.md — Screenshot capture hook, sidebar UI components, ChangeRequest assembly
+
 **UI hint**: yes
 
 ### Phase 6: Claude Code CLI Integration
