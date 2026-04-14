@@ -78,9 +78,10 @@ None yet.
 |---|-------------|------|--------|-----------|
 | 260414-kuh | Add logger.ts utility — debug level default, info in production | 2026-04-14 | cb4fac7 | [260414-kuh-add-logger-ts-utility-debug-level-defaul](./quick/260414-kuh-add-logger-ts-utility-debug-level-defaul/) |
 | 260414-mpo | Clear sidebar state on page refresh + fix captureVisibleTab call | 2026-04-14 | 6a3f6f2 | [260414-mpo-page-refresh-clears-extension-state-and-](./quick/260414-mpo-page-refresh-clears-extension-state-and-/) |
+| 260414-png | Fix disconnected status, disable inspect without server, rename to @inspatch/server | 2026-04-14 | 78b9a96 | [260414-png-fix-extension-showing-connected-when-ser](./quick/260414-png-fix-extension-showing-connected-when-ser/) |
 
 ## Session Continuity
 
-Last session: 2026-04-14T02:30:19.735Z
+Last session: 2026-04-14T10:28:08.967Z
 Stopped at: Phase 2 complete
 Resume file: .planning/phases/02-element-selection-visual-overlay/02-CONTEXT.md
