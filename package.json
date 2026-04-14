@@ -5,6 +5,7 @@
   "scripts": {
     "dev": "cd packages/extension && bun run dev",
     "build": "cd packages/extension && bun run build",
+    "server": "cd packages/server && bun run src/index.ts",
     "test": "bun test",
     "lint": "echo 'lint configuration pending'"
   }

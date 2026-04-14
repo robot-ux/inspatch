@@ -25,6 +25,7 @@ export const ElementSelectionSchema = z.object({
 
 export const ChangeRequestSchema = z.object({
   type: z.literal("change_request"),
+  requestId: z.string().optional(),
   description: z.string().min(1),
   elementXpath: z.string(),
   componentName: z.string().optional(),
@@ -35,13 +36,15 @@ export const ChangeRequestSchema = z.object({
 
 export const StatusUpdateSchema = z.object({
   type: z.literal("status_update"),
-  status: z.enum(["analyzing", "locating", "generating", "applying", "complete", "error"]),
+  requestId: z.string().optional(),
+  status: z.enum(["queued", "analyzing", "locating", "generating", "applying", "complete", "error"]),
   message: z.string(),
   progress: z.number().min(0).max(100).optional(),
 });
 
 export const ChangeResultSchema = z.object({
   type: z.literal("change_result"),
+  requestId: z.string().optional(),
   success: z.boolean(),
   diff: z.string().optional(),
   filesModified: z.array(z.string()).optional(),
@@ -70,6 +73,17 @@ export type StatusUpdate = z.infer<typeof StatusUpdateSchema>;
 export type ChangeResult = z.infer<typeof ChangeResultSchema>;
 export type Message = z.infer<typeof MessageSchema>;
 
+export const PingSchema = z.object({ type: z.literal("ping") });
+export const PongSchema = z.object({ type: z.literal("pong") });
+export const PingPongSchema = z.discriminatedUnion("type", [PingSchema, PongSchema]);
+export type PingPong = z.infer<typeof PingPongSchema>;
+
 export function parseMessage(data: unknown) {
+  return MessageSchema.safeParse(data);
+}
+
+export function parseProtocolMessage(data: unknown) {
+  const pingPong = PingPongSchema.safeParse(data);
+  if (pingPong.success) return pingPong;
   return MessageSchema.safeParse(data);
 }

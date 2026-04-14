@@ -5,8 +5,12 @@ export {
   StatusUpdateSchema,
   ChangeResultSchema,
   InspectCommandSchema,
+  PingSchema,
+  PongSchema,
+  PingPongSchema,
   MessageSchema,
   parseMessage,
+  parseProtocolMessage,
 } from "./schemas";
 
 export type {
@@ -16,5 +20,6 @@ export type {
   StatusUpdate,
   ChangeResult,
   InspectCommand,
+  PingPong,
   Message,
 } from "./schemas";
