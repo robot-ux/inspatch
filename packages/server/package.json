@@ -1,11 +1,11 @@
 {
-  "name": "inspatch-server",
+  "name": "@inspatch/server",
   "version": "0.0.1",
   "private": true,
   "type": "module",
   "main": "src/index.ts",
   "bin": {
-    "inspatch-server": "src/index.ts"
+    "@inspatch/server": "src/index.ts"
   },
   "scripts": {
     "start": "bun run src/index.ts",

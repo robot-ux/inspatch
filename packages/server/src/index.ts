@@ -11,10 +11,10 @@ const args = process.argv.slice(2);
 
 if (args.includes("--help") || args.includes("-h")) {
   console.log(`
-inspatch-server v${SERVER_VERSION}
+@inspatch/server v${SERVER_VERSION}
 
 Usage:
-  inspatch-server --project <dir> [options]
+  bunx @inspatch/server --project <dir> [options]
 
 Options:
   --project <dir>   Target project directory (required)
@@ -26,8 +26,8 @@ Environment variables:
   INSPATCH_PORT          Alternative to --port
 
 Example:
-  inspatch-server --project ./my-react-app
-  inspatch-server --project /Users/me/app --port 8080
+  bunx @inspatch/server --project ./my-react-app
+  bunx @inspatch/server --project /Users/me/app --port 8080
 `);
   process.exit(0);
 }

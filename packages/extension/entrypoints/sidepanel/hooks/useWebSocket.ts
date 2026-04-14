@@ -7,6 +7,7 @@ export type ConnectionStatus = "connected" | "reconnecting" | "disconnected";
 
 const INITIAL_BACKOFF = 1000;
 const MAX_BACKOFF = 30_000;
+const DISCONNECTED_THRESHOLD = 8_000;
 const PING_INTERVAL = 20_000;
 const PONG_TIMEOUT = 5_000;
 
@@ -107,9 +108,9 @@ export function useWebSocket(url: string) {
         if (pongTimeoutRef.current) clearTimeout(pongTimeoutRef.current);
 
         broadcastConnectionState(urlRef.current, false);
-        setStatus("reconnecting");
 
         const delay = backoffRef.current;
+        setStatus(delay >= DISCONNECTED_THRESHOLD ? "disconnected" : "reconnecting");
         backoffRef.current = Math.min(backoffRef.current * 2, MAX_BACKOFF);
         reconnectTimeoutRef.current = setTimeout(connect, delay);
       };
@@ -119,8 +120,8 @@ export function useWebSocket(url: string) {
       };
     } catch {
       if (!mountedRef.current) return;
-      setStatus("reconnecting");
       const delay = backoffRef.current;
+      setStatus(delay >= DISCONNECTED_THRESHOLD ? "disconnected" : "reconnecting");
       backoffRef.current = Math.min(backoffRef.current * 2, MAX_BACKOFF);
       reconnectTimeoutRef.current = setTimeout(connect, delay);
     }
