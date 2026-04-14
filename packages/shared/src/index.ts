@@ -4,6 +4,7 @@ export {
   ChangeRequestSchema,
   StatusUpdateSchema,
   ChangeResultSchema,
+  InspectCommandSchema,
   MessageSchema,
   parseMessage,
 } from "./schemas";
@@ -14,5 +15,6 @@ export type {
   ChangeRequest,
   StatusUpdate,
   ChangeResult,
+  InspectCommand,
   Message,
 } from "./schemas";

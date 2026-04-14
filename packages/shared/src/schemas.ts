@@ -48,6 +48,13 @@ export const ChangeResultSchema = z.object({
   error: z.string().optional(),
 });
 
+export const InspectCommandSchema = z.discriminatedUnion("type", [
+  z.object({ type: z.literal("start-inspect") }),
+  z.object({ type: z.literal("stop-inspect") }),
+]);
+
+export type InspectCommand = z.infer<typeof InspectCommandSchema>;
+
 export const MessageSchema = z.discriminatedUnion("type", [
   ConnectionStatusSchema,
   ElementSelectionSchema,
