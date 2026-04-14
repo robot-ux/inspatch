@@ -6,7 +6,7 @@ export interface FiberResult {
 
 const NULL_RESULT: FiberResult = { componentName: null, parentChain: [], debugSource: null };
 
-let injectedScript: HTMLElement | null = null;
+let injectedScript: HTMLScriptElement | null = null;
 let bridgeReady = false;
 let queryCounter = 0;
 
@@ -34,27 +34,42 @@ function handleFiberResult(e: Event) {
   });
 }
 
-export async function initFiberBridge(): Promise<void> {
-  try {
-    const { injectScript } = await import("wxt/utils/inject-script");
-    const result = await injectScript("/fiber-main-world.js", {
-      keepInDom: true,
-      modifyScript(script) {
-        script.addEventListener("inspatch-fiber-result", handleFiberResult);
-      },
-    });
+export function initFiberBridge(): Promise<void> {
+  return new Promise<void>((resolve) => {
+    try {
+      const scriptUrl = chrome.runtime.getURL("fiber-main-world.js");
+      console.log("[Inspatch] Injecting fiber script from:", scriptUrl);
 
-    injectedScript = result.script;
-    bridgeReady = true;
-    console.log("[Inspatch] Fiber bridge ready");
-  } catch (err) {
-    console.warn("[Inspatch] Fiber bridge injection failed:", err);
-    bridgeReady = false;
-  }
+      const script = document.createElement("script");
+      script.src = scriptUrl;
+
+      script.addEventListener("inspatch-fiber-result", handleFiberResult);
+
+      script.onload = () => {
+        injectedScript = script;
+        bridgeReady = true;
+        console.log("[Inspatch] Fiber bridge ready");
+        resolve();
+      };
+
+      script.onerror = (err) => {
+        console.warn("[Inspatch] Fiber script failed to load:", err);
+        bridgeReady = false;
+        resolve();
+      };
+
+      (document.head || document.documentElement).appendChild(script);
+    } catch (err) {
+      console.warn("[Inspatch] Fiber bridge injection failed:", err);
+      bridgeReady = false;
+      resolve();
+    }
+  });
 }
 
 export function queryFiber(selector: string): Promise<FiberResult> {
   if (!bridgeReady || !injectedScript) {
+    console.log("[Inspatch] queryFiber skipped — bridge not ready");
     return Promise.resolve(NULL_RESULT);
   }
 
@@ -62,6 +77,7 @@ export function queryFiber(selector: string): Promise<FiberResult> {
 
   return new Promise<FiberResult>((resolve) => {
     const timer = setTimeout(() => {
+      console.warn("[Inspatch] Fiber query timed out for:", selector);
       pendingQueries.delete(queryId);
       resolve(NULL_RESULT);
     }, 2000);
