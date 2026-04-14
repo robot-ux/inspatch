@@ -48,7 +48,8 @@ export class RequestQueue {
     const item = this.queue.shift()!;
     const { request, ws } = item;
 
-    logger.info(`Processing change request: "${request.description.slice(0, 80)}"`);
+    const startTime = Date.now();
+    logger.info(`Processing: "${request.description.slice(0, 80)}" [${request.requestId ?? "no-id"}]`);
 
     try {
       const result = await runClaude(
@@ -59,16 +60,20 @@ export class RequestQueue {
         },
       );
 
+      const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+
       if (result.success) {
+        logger.info(`Done in ${elapsed}s — ${result.filesModified?.length ?? 0} file(s) modified`);
         this.sendStatus(ws, request.requestId, "complete", "Changes applied successfully");
         this.sendResult(ws, request.requestId, true, result.resultText, result.filesModified);
       } else {
+        logger.warn(`Failed in ${elapsed}s — ${result.error}`);
         this.sendStatus(ws, request.requestId, "error", result.error ?? "Unknown error");
         this.sendResult(ws, request.requestId, false, undefined, undefined, result.error);
       }
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Unexpected error";
-      logger.error("Processing failed:", msg);
+      logger.error("Processing crashed:", msg);
       this.sendStatus(ws, request.requestId, "error", msg);
       this.sendResult(ws, request.requestId, false, undefined, undefined, msg);
     }

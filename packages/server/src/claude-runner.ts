@@ -140,7 +140,11 @@ export async function runClaude(
   onStatus: StatusCallback,
   signal?: AbortSignal,
 ): Promise<RunResult> {
-  logger.info("Starting Claude Code SDK");
+  logger.info("Starting Claude Code SDK for:", req.description.slice(0, 100));
+  logger.info(`Project dir: ${projectDir}`);
+  if (req.sourceFile) logger.info(`Source: ${req.sourceFile}${req.sourceLine ? `:${req.sourceLine}` : ""}`);
+  if (req.componentName) logger.info(`Component: ${req.componentName}`);
+  if (req.screenshotDataUrl) logger.info("Screenshot attached");
 
   onStatus("analyzing", "Starting Claude Code...");
 
@@ -173,6 +177,8 @@ export async function runClaude(
     });
 
     for await (const msg of q) {
+      logger.debug("SDK event:", msg.type, msg.type === "result" ? (msg as { subtype?: string }).subtype : "");
+
       if (msg.type === "assistant") {
         const text = extractTextFromMessage(msg);
         if (text) {
@@ -182,6 +188,7 @@ export async function runClaude(
 
         const toolName = extractToolNameFromMessage(msg);
         if (toolName) {
+          logger.info(`Tool: ${toolName}`);
           if (["Read", "Grep", "Glob"].includes(toolName)) {
             currentStatus = "locating";
             onStatus(currentStatus, "Reading files...");
@@ -196,11 +203,17 @@ export async function runClaude(
         if (msg.subtype === "success") {
           resultText = msg.result;
           filesModified = extractModifiedFiles(msg.result);
+          logger.info("Claude completed successfully");
+          if (filesModified.length) {
+            logger.info(`Modified files: ${filesModified.join(", ")}`);
+          }
         } else {
+          const errDetail = (msg as { error?: string }).error ?? "unknown";
+          logger.error("Claude returned error:", errDetail);
           clearTimeout(timeout);
           return {
             success: false,
-            error: `Claude Code error: ${(msg as { error?: string }).error ?? "unknown"}`,
+            error: `Claude Code error: ${errDetail}`,
             resultText: fullText,
           };
         }
