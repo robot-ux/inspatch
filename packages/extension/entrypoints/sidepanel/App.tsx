@@ -1,16 +1,15 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import type { ElementSelection, ChangeRequest, StatusUpdate, ChangeResult } from '@inspatch/shared';
-import { useWebSocket, type ConnectionStatus } from './hooks/useWebSocket';
+import { useWebSocket } from './hooks/useWebSocket';
 import { ChangeInput } from './components/ChangeInput';
 import { ProcessingStatus } from './components/ProcessingStatus';
+import { HeaderBar } from './components/HeaderBar';
+import { NotLocalhost } from './components/NotLocalhost';
+import { EmptyState } from './components/EmptyState';
+import { StatusGuide } from './components/StatusGuide';
+import { ElementCard } from './components/ElementCard';
 
 type SidebarState = 'idle' | 'inspecting' | 'selected';
-
-const statusConfig: Record<ConnectionStatus, { dotClass: string; label: string }> = {
-  connected: { dotClass: 'bg-green-500 animate-status-dot', label: 'Connected' },
-  reconnecting: { dotClass: 'bg-yellow-500 animate-pulse', label: 'Reconnecting...' },
-  disconnected: { dotClass: 'bg-gray-400', label: 'Disconnected' },
-};
 
 function isLocalhostUrl(url: string | undefined): boolean {
   if (!url) return false;
@@ -183,58 +182,33 @@ export default function App() {
 
   if (!isLocalhost) {
     return (
-      <div className="flex flex-col h-screen bg-white">
-        <div className="flex items-center justify-end px-4 py-2 border-b border-gray-200">
-          <button
-            onClick={status !== 'connected' ? reconnect : undefined}
-            className={`flex items-center gap-2 ${status !== 'connected' ? 'cursor-pointer hover:opacity-80' : 'cursor-default'}`}
-            title={status !== 'connected' ? 'Click to reconnect' : ''}
-          >
-            <div className={`w-2 h-2 rounded-full ${statusConfig[status].dotClass}`} />
-            <span className="text-xs text-gray-500">{statusConfig[status].label}</span>
-          </button>
-        </div>
-        <div className="flex-1 flex flex-col items-center justify-center p-6 gap-3 animate-fade-in">
-          <div className="w-10 h-10 rounded-full bg-gray-100 flex items-center justify-center">
-            <span className="text-lg text-gray-400">&#128274;</span>
-          </div>
-          <p className="text-sm font-medium text-gray-600 text-center">Localhost only</p>
-          <p className="text-xs text-gray-400 text-center leading-relaxed">
-            Inspatch works with locally-served pages.<br />
-            Navigate to a <span className="font-mono text-gray-500">localhost</span> URL to start inspecting.
-          </p>
-        </div>
+      <div className="flex flex-col h-screen bg-ip-bg-primary">
+        <HeaderBar status={status} onReconnect={reconnect} />
+        <NotLocalhost />
       </div>
     );
   }
 
   return (
-    <div className="flex flex-col h-screen bg-white">
-      <div className="flex items-center justify-end px-4 py-2 border-b border-gray-200">
-        <button
-          onClick={status !== 'connected' ? reconnect : undefined}
-          className={`flex items-center gap-2 ${status !== 'connected' ? 'cursor-pointer hover:opacity-80' : 'cursor-default'}`}
-          title={status !== 'connected' ? 'Click to reconnect' : ''}
-        >
-          <div className={`w-2 h-2 rounded-full ${statusConfig[status].dotClass}`} />
-          <span className="text-xs text-gray-500">
-            {statusConfig[status].label}
-          </span>
-        </button>
-      </div>
+    <div className="flex flex-col h-screen bg-ip-bg-primary">
+      <HeaderBar status={status} onReconnect={reconnect} />
 
       {error && (
-        <div className="px-4 py-2 bg-amber-50 border-b border-amber-200 animate-slide-down">
-          <p className="text-xs text-amber-700">{error}</p>
+        <div className="px-4 py-2 bg-ip-warning-muted border-b border-[rgba(245,158,11,0.3)] animate-slide-down">
+          <p className="text-[11px] text-ip-warning">{error}</p>
         </div>
       )}
 
-      <div className="px-4 py-3 border-b border-gray-200">
+      <div className="px-3 py-3 border-b border-ip-border-subtle">
         {sidebarState === 'idle' && !selectedElement && (
           <button
             onClick={handleStartInspect}
             disabled={status !== 'connected'}
-            className="w-full py-2 px-4 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed text-white text-sm font-medium rounded-lg transition-colors"
+            className={`w-full h-9 text-white text-[13px] font-semibold rounded-ip-md transition-all ${
+              status === 'connected'
+                ? 'bg-linear-[135deg] from-ip-gradient-start to-ip-gradient-end hover:brightness-110 hover:shadow-ip-glow-accent'
+                : 'opacity-40 bg-ip-bg-tertiary cursor-not-allowed'
+            }`}
           >
             Start Inspect
           </button>
@@ -243,23 +217,22 @@ export default function App() {
           <div className="flex gap-2">
             <button
               onClick={handleInspectAgain}
-              className="flex-1 py-2 px-4 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg transition-colors"
+              className="flex-1 h-9 bg-linear-[135deg] from-ip-gradient-start to-ip-gradient-end hover:brightness-110 text-white text-[13px] font-semibold rounded-ip-md transition-all"
             >
               Inspect Again
             </button>
             <button
               onClick={handleStopInspect}
-              className="py-2 px-4 bg-gray-200 hover:bg-gray-300 text-gray-700 text-sm font-medium rounded-lg transition-colors"
+              className="h-9 px-4 bg-ip-bg-tertiary hover:bg-ip-bg-tertiary/80 text-ip-text-secondary text-[13px] font-semibold rounded-ip-md transition-colors"
             >
-              Clear
+              Clear Selection
             </button>
           </div>
         )}
         {sidebarState === 'inspecting' && (
           <button
             onClick={handleStopInspect}
-            className="w-full py-2 px-4 bg-red-600 hover:bg-red-700 text-white text-sm font-medium rounded-lg transition-colors animate-glow-pulse"
-            style={{ '--tw-shadow-color': 'rgba(220, 38, 38, 0.3)' } as React.CSSProperties}
+            className="w-full h-9 bg-ip-error text-white text-[13px] font-semibold rounded-ip-md transition-colors animate-glow-pulse"
           >
             Stop Inspect
           </button>
@@ -268,110 +241,20 @@ export default function App() {
 
       <div className="flex-1 overflow-y-auto p-4">
         {sidebarState !== 'inspecting' && !selectedElement && status !== 'connected' && (
-          <div className="flex flex-col items-center justify-center h-full gap-4 px-2 animate-fade-in">
-            <p className="text-sm text-gray-500 text-center">
-              Server not connected. Start the Inspatch server:
-            </p>
-            <div className="w-full bg-gray-900 rounded-lg p-3">
-              <code className="text-xs text-green-400 block whitespace-pre-wrap">
-                {`cd your-project\nbunx @inspatch/server --project .`}
-              </code>
-            </div>
-            <button
-              onClick={reconnect}
-              className="px-4 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-medium rounded-lg transition-colors"
-            >
-              Reconnect
-            </button>
-            <p className="text-[11px] text-gray-400 text-center">
-              Requires <span className="font-mono">bun</span> and <span className="font-mono">claude</span> CLI to be installed
-            </p>
-          </div>
+          <StatusGuide onReconnect={reconnect} />
         )}
         {sidebarState !== 'inspecting' && !selectedElement && status === 'connected' && (
-          <div className="flex items-center justify-center h-full animate-fade-in">
-            <p className="text-sm text-gray-400 text-center">
-              Select an element to get started
-            </p>
-          </div>
+          <EmptyState state="idle" />
         )}
         {sidebarState === 'inspecting' && (
-          <div className="flex items-center justify-center h-full animate-fade-in">
-            <div className="flex flex-col items-center gap-3">
-              <div className="w-8 h-8 rounded-full border-2 border-blue-500 border-t-transparent animate-spin" />
-              <p className="text-sm text-gray-500 text-center">
-                Click any element on the page to select it
-              </p>
-            </div>
-          </div>
+          <EmptyState state="inspecting" />
         )}
         {selectedElement && sidebarState !== 'inspecting' && (
-          <div
-            className="bg-gray-50 rounded-lg border border-gray-200 p-4 space-y-2 cursor-pointer hover:border-blue-400 hover:bg-blue-50/30 transition-all duration-200 hover:shadow-md animate-slide-up"
-            onMouseEnter={handleElementHover}
-            onMouseLeave={handleElementLeave}
-          >
-            <div className="flex items-baseline justify-between">
-              <span className="text-lg font-mono font-semibold text-gray-900">
-                {selectedElement.tagName}
-              </span>
-              <span className="text-sm font-mono text-gray-500">
-                {selectedElement.boundingRect.width}×{selectedElement.boundingRect.height}
-              </span>
-            </div>
-            {selectedElement.id && (
-              <p className="text-sm font-mono text-blue-600">#{selectedElement.id}</p>
-            )}
-            {selectedElement.className && (
-              <p className="text-sm font-mono text-gray-600">
-                {selectedElement.className.split(/\s+/).filter(Boolean).map(c => `.${c}`).join(' ')}
-              </p>
-            )}
-            <p className="text-xs font-mono text-gray-400 truncate" title={selectedElement.xpath}>
-              {selectedElement.xpath}
-            </p>
-
-            <div className="border-t border-gray-100 pt-2 mt-2 space-y-1.5">
-              {selectedElement.componentName ? (
-                <>
-                  <div className="flex items-center gap-1.5">
-                    <span className="text-xs text-gray-400">&lt;/&gt;</span>
-                    <span className="text-sm font-mono font-medium text-purple-600">
-                      {selectedElement.componentName}
-                    </span>
-                  </div>
-                  {selectedElement.parentChain && selectedElement.parentChain.length > 1 && (() => {
-                    const chain = selectedElement.parentChain!;
-                    const display = chain.length > 5 ? chain.slice(-4) : chain;
-                    return (
-                      <p className="text-xs font-mono text-gray-400 truncate">
-                        {chain.length > 5 && <span>… {'>'} </span>}
-                        {display.map((name, i) => (
-                          <span key={i}>
-                            {i > 0 && <span className="text-gray-300"> {'>'} </span>}
-                            <span className="text-gray-500">{name}</span>
-                          </span>
-                        ))}
-                      </p>
-                    );
-                  })()}
-                  {selectedElement.sourceFile && (() => {
-                    const parts = selectedElement.sourceFile!.split('/');
-                    const truncated = parts.length > 3
-                      ? '…/' + parts.slice(-3).join('/')
-                      : selectedElement.sourceFile!;
-                    return (
-                      <p className="text-xs font-mono text-green-600 truncate" title={selectedElement.sourceFile}>
-                        {truncated}{selectedElement.sourceLine ? `:${selectedElement.sourceLine}` : ''}
-                      </p>
-                    );
-                  })()}
-                </>
-              ) : (
-                <p className="text-xs text-gray-400 italic">No React component detected</p>
-              )}
-            </div>
-          </div>
+          <ElementCard
+            element={selectedElement}
+            onHover={handleElementHover}
+            onLeave={handleElementLeave}
+          />
         )}
 
         {selectedElement && sidebarState !== 'inspecting' && (processing || changeResult) && (
@@ -392,8 +275,8 @@ export default function App() {
       </div>
 
       {selectedElement && sidebarState !== 'inspecting' && !selectedElement.sourceFile && (
-        <div className="px-4 py-2 bg-amber-50 border-t border-amber-200">
-          <p className="text-[11px] text-amber-600">
+        <div className="px-4 py-2 bg-ip-warning-muted border-t border-[rgba(245,158,11,0.3)]">
+          <p className="text-[11px] text-ip-warning">
             No source file detected — changes may require manual file lookup.
             Ensure your dev server has source maps enabled.
           </p>
