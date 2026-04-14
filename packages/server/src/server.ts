@@ -1,6 +1,8 @@
 import type { Server } from "bun";
-import { parseMessage } from "@inspatch/shared";
+import { parseMessage, createLogger } from "@inspatch/shared";
 import { RequestQueue, type WSData } from "./queue";
+
+const logger = createLogger("ws");
 
 export const SERVER_VERSION = "0.0.1";
 
@@ -28,7 +30,7 @@ export function createServer(port: number): Server {
     websocket: {
       idleTimeout: 60,
       open(ws) {
-        console.log(`[ws] Connected: ${ws.data.id}`);
+        logger.info(`Connected: ${ws.data.id}`);
       },
       message(ws, raw) {
         const text = typeof raw === "string" ? raw : new TextDecoder().decode(raw);
@@ -66,15 +68,15 @@ export function createServer(port: number): Server {
         const msg = result.data;
 
         if (msg.type === "change_request") {
-          console.log(`[ws] Change request from ${ws.data.id}: "${msg.description}"`);
+          logger.info(`Change request from ${ws.data.id}: "${msg.description}"`);
           queue.enqueue(msg, ws);
           return;
         }
 
-        console.log(`[ws] Received ${msg.type} from ${ws.data.id}`);
+        logger.info(`Received ${msg.type} from ${ws.data.id}`);
       },
       close(ws, code, reason) {
-        console.log(`[ws] Disconnected: ${ws.data.id} (${code} ${reason || ""})`);
+        logger.info(`Disconnected: ${ws.data.id} (${code} ${reason || ""})`);
       },
     },
   });

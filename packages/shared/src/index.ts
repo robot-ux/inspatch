@@ -23,3 +23,6 @@ export type {
   PingPong,
   Message,
 } from "./schemas";
+
+export { createLogger, LogLevel } from "./logger";
+export type { Logger, LogLevelName } from "./logger";

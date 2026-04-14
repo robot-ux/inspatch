@@ -1,5 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
-import { parseMessage, type Message } from "@inspatch/shared";
+import { parseMessage, createLogger, type Message } from "@inspatch/shared";
+
+const logger = createLogger("ws-client");
 
 export type ConnectionStatus = "connected" | "reconnecting" | "disconnected";
 
@@ -86,7 +88,7 @@ export function useWebSocket(url: string) {
         if (result.success) {
           setLastMessage(result.data);
         } else {
-          console.warn("[Inspatch] Invalid message from server:", parsed);
+          logger.warn("Invalid message from server:", parsed);
         }
       };
 
@@ -135,7 +137,7 @@ export function useWebSocket(url: string) {
     if (ws && ws.readyState === WebSocket.OPEN) {
       ws.send(JSON.stringify(data));
     } else {
-      console.warn("[Inspatch] Cannot send — WebSocket not open");
+      logger.warn("Cannot send — WebSocket not open");
     }
   }, []);
 
