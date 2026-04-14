@@ -1,9 +1,8 @@
+import { query, type SDKMessage, type SDKUserMessage } from "@anthropic-ai/claude-agent-sdk";
 import type { ChangeRequest } from "@inspatch/shared";
 import { createLogger } from "@inspatch/shared";
 
 const logger = createLogger("claude");
-
-const CLI_TIMEOUT_MS = 120_000;
 
 export interface StatusCallback {
   (status: string, message: string, streamText?: string): void;
@@ -16,7 +15,7 @@ export interface RunResult {
   error?: string;
 }
 
-function buildPrompt(req: ChangeRequest): string {
+function buildPromptText(req: ChangeRequest): string {
   const lines: string[] = [
     "You are modifying a web application. The user selected an element on the page and wants to make a change.",
     "",
@@ -57,6 +56,10 @@ function buildPrompt(req: ChangeRequest): string {
 
   lines.push("", "## User's Request", req.description);
 
+  if (req.screenshotDataUrl) {
+    lines.push("", "The user has also attached a screenshot of the element for visual reference.");
+  }
+
   lines.push(
     "",
     "## Instructions",
@@ -69,39 +72,66 @@ function buildPrompt(req: ChangeRequest): string {
   return lines.join("\n");
 }
 
-function parseStreamLine(line: string): { type: string; text?: string; toolName?: string; result?: string } | null {
-  if (!line.trim()) return null;
+function buildPrompt(req: ChangeRequest): string | AsyncIterable<SDKUserMessage> {
+  const text = buildPromptText(req);
 
-  try {
-    const obj = JSON.parse(line);
-
-    if (obj.type === "result") {
-      return { type: "result", result: obj.result ?? "", text: obj.result };
-    }
-
-    if (obj.type === "stream_event") {
-      const delta = obj.event?.delta;
-      if (delta?.type === "text_delta" && delta.text) {
-        return { type: "text", text: delta.text };
-      }
-      if (delta?.type === "input_json_delta") {
-        return null;
-      }
-
-      const block = obj.event?.content_block;
-      if (block?.type === "tool_use") {
-        return { type: "tool_start", toolName: block.name };
-      }
-    }
-
-    if (obj.type === "system" && obj.subtype === "api_retry") {
-      return { type: "retry", text: `Retrying (attempt ${obj.attempt}/${obj.max_retries})...` };
-    }
-
-    return null;
-  } catch {
-    return null;
+  if (!req.screenshotDataUrl) {
+    return text;
   }
+
+  const dataUrlMatch = req.screenshotDataUrl.match(/^data:([^;]+);base64,(.+)$/);
+  if (!dataUrlMatch) {
+    return text;
+  }
+
+  const [, mediaType, base64Data] = dataUrlMatch;
+
+  async function* generateMessages(): AsyncGenerator<SDKUserMessage> {
+    yield {
+      type: "user",
+      message: {
+        role: "user",
+        content: [
+          { type: "text", text },
+          {
+            type: "image",
+            source: {
+              type: "base64",
+              media_type: mediaType as "image/png" | "image/jpeg" | "image/gif" | "image/webp",
+              data: base64Data,
+            },
+          },
+        ],
+      },
+      parent_tool_use_id: null,
+    } satisfies SDKUserMessage;
+  }
+
+  return generateMessages();
+}
+
+function extractTextFromMessage(msg: SDKMessage): string | null {
+  if (msg.type === "assistant") {
+    const content = (msg.message as { content?: unknown[] })?.content;
+    if (Array.isArray(content)) {
+      return content
+        .filter((b: unknown) => (b as { type: string }).type === "text")
+        .map((b: unknown) => (b as { text: string }).text)
+        .join("");
+    }
+  }
+  return null;
+}
+
+function extractToolNameFromMessage(msg: SDKMessage): string | null {
+  if (msg.type === "assistant") {
+    const content = (msg.message as { content?: unknown[] })?.content;
+    if (Array.isArray(content)) {
+      const toolUse = content.find((b: unknown) => (b as { type: string }).type === "tool_use");
+      if (toolUse) return (toolUse as { name: string }).name;
+    }
+  }
+  return null;
 }
 
 export async function runClaude(
@@ -110,114 +140,83 @@ export async function runClaude(
   onStatus: StatusCallback,
   signal?: AbortSignal,
 ): Promise<RunResult> {
-  const prompt = buildPrompt(req);
-  logger.info("Starting Claude Code CLI");
-  logger.debug("Prompt:", prompt.slice(0, 200) + "...");
+  logger.info("Starting Claude Code SDK");
 
   onStatus("analyzing", "Starting Claude Code...");
 
-  const args = [
-    "-p", prompt,
-    "--output-format", "stream-json",
-    "--bare",
-    "--verbose",
-    "--allowedTools", "Read,Edit,Bash",
-  ];
-
-  const proc = Bun.spawn(["claude", ...args], {
-    cwd: projectDir,
-    stdout: "pipe",
-    stderr: "pipe",
-    env: { ...process.env },
-  });
-
-  if (!proc.stdout) {
-    return { success: false, error: "Failed to capture CLI stdout" };
-  }
-
-  const timeoutId = setTimeout(() => {
-    logger.warn("CLI timeout reached, killing process");
-    proc.kill();
-  }, CLI_TIMEOUT_MS);
-
+  const abortController = new AbortController();
   if (signal) {
-    signal.addEventListener("abort", () => {
-      proc.kill();
-      clearTimeout(timeoutId);
-    }, { once: true });
+    signal.addEventListener("abort", () => abortController.abort(), { once: true });
   }
+
+  const timeout = setTimeout(() => {
+    logger.warn("Timeout reached (120s), aborting");
+    abortController.abort();
+  }, 120_000);
 
   let fullText = "";
   let currentStatus = "analyzing";
   let resultText = "";
-  const stdout = proc.stdout as ReadableStream<Uint8Array>;
+  let filesModified: string[] = [];
 
   try {
-    const reader = stdout.getReader();
-    const decoder = new TextDecoder();
-    let buffer = "";
+    const prompt = buildPrompt(req);
 
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
+    const q = query({
+      prompt,
+      options: {
+        cwd: projectDir,
+        allowedTools: ["Read", "Edit", "Write", "MultiEdit", "Bash", "Grep", "Glob"],
+        abortController,
+        permissionMode: "acceptEdits",
+      },
+    });
 
-      buffer += decoder.decode(value, { stream: true });
-      const lines = buffer.split("\n");
-      buffer = lines.pop() ?? "";
+    for await (const msg of q) {
+      if (msg.type === "assistant") {
+        const text = extractTextFromMessage(msg);
+        if (text) {
+          fullText = text;
+          onStatus(currentStatus, "Claude is working...", text);
+        }
 
-      for (const line of lines) {
-        const event = parseStreamLine(line);
-        if (!event) continue;
-
-        if (event.type === "text") {
-          fullText += event.text;
-          onStatus(currentStatus, "Claude is working...", event.text);
-        } else if (event.type === "tool_start") {
-          const name = event.toolName ?? "";
-          if (name === "Read" || name === "Grep" || name === "Glob") {
+        const toolName = extractToolNameFromMessage(msg);
+        if (toolName) {
+          if (["Read", "Grep", "Glob"].includes(toolName)) {
             currentStatus = "locating";
             onStatus(currentStatus, "Reading files...");
-          } else if (name === "Edit" || name === "Write" || name === "MultiEdit") {
+          } else if (["Edit", "Write", "MultiEdit"].includes(toolName)) {
             currentStatus = "applying";
             onStatus(currentStatus, "Applying changes...");
-          } else if (name === "Bash") {
+          } else if (toolName === "Bash") {
             onStatus(currentStatus, "Running command...");
           }
-        } else if (event.type === "result") {
-          resultText = event.result ?? fullText;
-        } else if (event.type === "retry") {
-          onStatus(currentStatus, event.text ?? "Retrying...");
+        }
+      } else if (msg.type === "result") {
+        if (msg.subtype === "success") {
+          resultText = msg.result;
+          filesModified = extractModifiedFiles(msg.result);
+        } else {
+          clearTimeout(timeout);
+          return {
+            success: false,
+            error: `Claude Code error: ${(msg as { error?: string }).error ?? "unknown"}`,
+            resultText: fullText,
+          };
         }
       }
     }
-
-    if (buffer.trim()) {
-      const event = parseStreamLine(buffer);
-      if (event?.type === "result") {
-        resultText = event.result ?? fullText;
-      }
-    }
   } catch (err) {
-    clearTimeout(timeoutId);
-    const msg = err instanceof Error ? err.message : "Stream read error";
-    logger.error(msg);
-    return { success: false, error: msg };
+    clearTimeout(timeout);
+    const errMsg = err instanceof Error ? err.message : "Unknown error";
+    if (errMsg.includes("abort")) {
+      return { success: false, error: "Request timed out or was cancelled" };
+    }
+    logger.error("SDK error:", errMsg);
+    return { success: false, error: errMsg };
   }
 
-  clearTimeout(timeoutId);
-
-  const exitCode = await proc.exited;
-  logger.info(`CLI exited with code ${exitCode}`);
-
-  if (exitCode !== 0) {
-    const stderrStream = proc.stderr as ReadableStream<Uint8Array>;
-    const stderr = await new Response(stderrStream).text();
-    const errMsg = stderr.trim() || `CLI exited with code ${exitCode}`;
-    logger.error(errMsg);
-    return { success: false, error: errMsg, resultText: resultText || fullText };
-  }
-
-  const filesModified = extractModifiedFiles(resultText || fullText);
+  clearTimeout(timeout);
 
   return {
     success: true,

@@ -1,3 +1,4 @@
+#!/usr/bin/env bun
 import { resolve } from "path";
 import { existsSync } from "fs";
 import { createLogger } from "@inspatch/shared";
@@ -6,9 +7,32 @@ import { createServer, SERVER_VERSION } from "./server";
 const logger = createLogger("server");
 
 const DEFAULT_PORT = 9377;
+const args = process.argv.slice(2);
+
+if (args.includes("--help") || args.includes("-h")) {
+  console.log(`
+inspatch-server v${SERVER_VERSION}
+
+Usage:
+  inspatch-server --project <dir> [options]
+
+Options:
+  --project <dir>   Target project directory (required)
+  --port <number>   WebSocket port (default: ${DEFAULT_PORT})
+  -h, --help        Show this help message
+
+Environment variables:
+  INSPATCH_PROJECT_DIR   Alternative to --project
+  INSPATCH_PORT          Alternative to --port
+
+Example:
+  inspatch-server --project ./my-react-app
+  inspatch-server --project /Users/me/app --port 8080
+`);
+  process.exit(0);
+}
 
 function getCliArg(flag: string): string | undefined {
-  const args = process.argv.slice(2);
   const idx = args.indexOf(flag);
   return idx !== -1 ? args[idx + 1] : undefined;
 }
@@ -26,6 +50,7 @@ function getProjectDir(): string {
   const raw = getCliArg("--project") ?? process.env.INSPATCH_PROJECT_DIR;
   if (!raw) {
     logger.error("Project directory required. Use --project /path/to/app or set INSPATCH_PROJECT_DIR");
+    logger.error("Run inspatch-server --help for usage info");
     process.exit(1);
   }
   const dir = resolve(raw);
