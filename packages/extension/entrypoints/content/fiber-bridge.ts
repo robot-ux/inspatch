@@ -38,29 +38,23 @@ export function initFiberBridge(): Promise<void> {
   return new Promise<void>((resolve) => {
     try {
       const scriptUrl = chrome.runtime.getURL("fiber-main-world.js");
-      console.log("[Inspatch] Injecting fiber script from:", scriptUrl);
-
       const script = document.createElement("script");
       script.src = scriptUrl;
-
       script.addEventListener("inspatch-fiber-result", handleFiberResult);
 
       script.onload = () => {
         injectedScript = script;
         bridgeReady = true;
-        console.log("[Inspatch] Fiber bridge ready");
         resolve();
       };
 
-      script.onerror = (err) => {
-        console.warn("[Inspatch] Fiber script failed to load:", err);
+      script.onerror = () => {
         bridgeReady = false;
         resolve();
       };
 
       (document.head || document.documentElement).appendChild(script);
-    } catch (err) {
-      console.warn("[Inspatch] Fiber bridge injection failed:", err);
+    } catch {
       bridgeReady = false;
       resolve();
     }
@@ -69,7 +63,6 @@ export function initFiberBridge(): Promise<void> {
 
 export function queryFiber(selector: string): Promise<FiberResult> {
   if (!bridgeReady || !injectedScript) {
-    console.log("[Inspatch] queryFiber skipped — bridge not ready");
     return Promise.resolve(NULL_RESULT);
   }
 
@@ -77,7 +70,6 @@ export function queryFiber(selector: string): Promise<FiberResult> {
 
   return new Promise<FiberResult>((resolve) => {
     const timer = setTimeout(() => {
-      console.warn("[Inspatch] Fiber query timed out for:", selector);
       pendingQueries.delete(queryId);
       resolve(NULL_RESULT);
     }, 2000);
@@ -90,6 +82,3 @@ export function queryFiber(selector: string): Promise<FiberResult> {
   });
 }
 
-export function isBridgeReady(): boolean {
-  return bridgeReady;
-}

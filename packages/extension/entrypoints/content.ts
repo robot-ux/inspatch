@@ -7,14 +7,7 @@ import { clearSourceMapCache } from './content/source-resolver';
 export default defineContentScript({
   matches: ['http://localhost:*/*'],
   main(ctx) {
-    console.log('[Inspatch] Content script loaded on', window.location.href);
-
-    console.log('[Inspatch] Starting fiber bridge init...');
-    initFiberBridge().then(() => {
-      console.log('[Inspatch] Fiber bridge init done, bridgeReady:', true);
-    }).catch((err) => {
-      console.warn('[Inspatch] Fiber bridge init error:', err);
-    });
+    initFiberBridge().catch(() => {});
 
     const { host, shadow } = createOverlayHost();
     const layers = createOverlayLayers(shadow);
