@@ -83,7 +83,12 @@ Plans:
   2. Source file path and line number are resolved via Source Maps and displayed in the sidebar
   3. Source resolution works correctly across Vite, Next.js, and Create React App dev servers
   4. Main-world script injection successfully accesses React fiber data across Chrome's isolated world boundary
-**Plans**: TBD
+**Plans:** 2 plans
+
+Plans:
+- [ ] 04-01-PLAN.md — Fiber detection engine + source map resolution modules
+- [ ] 04-02-PLAN.md — Integration pipeline wiring + sidebar component info display
+
 **UI hint**: yes
 
 ### Phase 5: Screenshot Capture & Context Assembly
