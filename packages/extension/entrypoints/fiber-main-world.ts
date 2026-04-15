@@ -22,7 +22,12 @@ export default defineUnlistedScript(() => {
   function walkFiberTree(startFiber: any) {
     let componentName: string | null = null;
     const parentChain: string[] = [];
-    let debugSource: { fileName: string; lineNumber: number } | null = null;
+    // startFiber._debugSource points to where this exact JSX node is written —
+    // the most precise location for editing. Component fibers higher up the tree
+    // have _debugSource pointing to their instantiation site (e.g. App.tsx:20 for
+    // <Button />) rather than the element itself (e.g. Button.tsx:12 for <span>).
+    let debugSource: { fileName: string; lineNumber: number } | null =
+      startFiber._debugSource ?? null;
 
     let fiber = startFiber;
     while (fiber) {
@@ -30,7 +35,8 @@ export default defineUnlistedScript(() => {
       if (name) {
         if (componentName === null) {
           componentName = name;
-          debugSource = fiber._debugSource ?? null;
+          // Only fall back if the element had no debug source of its own
+          if (!debugSource) debugSource = fiber._debugSource ?? null;
         }
         parentChain.push(name);
       }

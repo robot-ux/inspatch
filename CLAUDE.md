@@ -1,159 +1,153 @@
-<!-- GSD:project-start source:PROJECT.md -->
-## Project
+# CLAUDE.md
 
-**Inspatch**
+## LANGUAGE RULE — HIGHEST PRIORITY
 
-A Chrome extension development tool that lets developers visually select elements on locally-served web pages, describe desired changes in natural language, and have those changes automatically applied to the source code via Claude Code CLI. Inspatch bridges the gap between what you see in the browser and the source code that produces it — point, describe, done.
+**Always match the user's language.** If the user writes in Chinese, every word of your reply must be in Chinese. If in English, reply in English. This rule overrides everything else and applies to every single response, including plans, summaries, and error messages. Never mix languages mid-response.
 
-**Core Value:** Developers can click any element on their local dev server page, describe what they want changed in plain language, and see the source code updated automatically — eliminating the "find the right file and line" friction entirely.
+---
 
-### Constraints
+## Spec-Driven Workflow — MANDATORY, NO EXCEPTIONS
 
-- **Platform**: Chrome extension (Manifest V3) — Chrome Web Store compatibility
-- **Source Map dependency**: Requires dev server to generate accessible Source Maps (most modern tools do by default)
-- **Local only**: Extension communicates only with localhost — no external network calls
-- **Claude Code CLI**: Requires Claude Code to be installed and authenticated on the developer's machine
-- **React focus**: v1 component detection targets React's fiber tree and JSX patterns
-<!-- GSD:project-end -->
+You MUST follow these steps in strict order for every code change request.
+If you find yourself about to write code or call Edit/Write/Bash without having completed Step 1 AND received explicit user approval — STOP. Go back to Step 1.
 
-<!-- GSD:stack-start source:research/STACK.md -->
-## Technology Stack
+---
 
-## Recommended Stack
-### Core Technologies
-| Technology | Version | Purpose | Why Recommended |
-|------------|---------|---------|-----------------|
-| WXT | 0.20.20 | Extension framework | Vite-based, file-based entrypoints auto-generate manifest, HMR for all extension contexts, MV3 native. Nuxt-inspired DX with auto-imports. Supports React out of the box. 9.5K GitHub stars, actively maintained (Vite 8 support shipped). |
-| React | 19.0.4 | Sidebar panel UI | Project targets React apps — using React for the extension UI means one language/paradigm. Mature ecosystem, ref-as-prop eliminates forwardRef boilerplate. |
-| TypeScript | 5.7+ | Type safety across all codebases | Extension ↔ server message contracts benefit enormously from shared types. WXT has first-class TS support. |
-| Tailwind CSS | 4.2 | Sidebar styling | CSS-first config via `@theme`, Rust-based Oxide engine (3–100x faster builds), automatic content detection. Pairs naturally with WXT's Vite pipeline. |
-| Node.js | 22 LTS | Local middleware server | Active LTS through Oct 2027. Native `fetch`, `WebSocket` client, performant `child_process` for CLI invocation. |
-### Supporting Libraries
-| Library | Version | Purpose | When to Use |
-|---------|---------|---------|-------------|
-| ws | 8.20.0 | WebSocket server (Node.js side) | Server that receives extension connections. Zero dependencies, 167M weekly downloads, battle-tested. |
-| source-map-js | 1.2.1 | Source map parsing | Resolving generated DOM positions to original source file/line. Synchronous API — no WASM init needed in content script context. Pure JS, 82M weekly downloads. |
-| Zod | 4.3.6 | Message schema validation | Validate WebSocket messages between extension and server. 2KB core, TypeScript-first, 14.7x faster string parsing in v4. Shared schemas = type-safe contract. |
-| nanoid | 5.1+ | Message/request IDs | Generate unique IDs for WebSocket request-response correlation. Tiny, URL-safe, cryptographically strong. |
-### Development Tools
-| Tool | Purpose | Notes |
-|------|---------|-------|
-| WXT CLI | Extension dev server, build, zip | `wxt dev` for HMR, `wxt build` for production, `wxt zip` for store submission |
-| Vite 8 | Bundler (via WXT) | Rolldown integration for 10–30x faster production builds. WXT 0.20.20 has explicit Vite 8 support. |
-| pnpm | Package manager | Workspace support for monorepo (extension + server packages), strict dependency resolution, disk-efficient |
-| ESLint 10 | Linting | WXT 0.20.19+ lists ESLint 10 as supported |
-| @anthropic-ai/claude-code | Claude Code CLI | Headless mode via `-p` flag, JSON output via `--output-format json`, tool pre-approval via `--allowedTools` |
-## Architecture-Specific Stack Decisions
-### Chrome Extension (WXT)
-### Source Map Resolution
-- `source-map-js` has a synchronous API — `new SourceMapConsumer(rawMap)` + `consumer.originalPositionFor({line, column})`. No WASM init, no async/await ceremony.
-- `mozilla/source-map` v0.7+ requires `SourceMapConsumer.initialize()` with a WASM binary URL, which is awkward in extension content script contexts where file URLs and CSP intersect.
-- Performance is comparable for our use case (we parse one source map at a time, not thousands).
-### Element Screenshot Capture
-### React Component Detection
-### WebSocket Communication
-### Local Server + Claude Code CLI
-## Installation
-# Extension (WXT + React + Tailwind)
-# Local server
-## Alternatives Considered
-| Category | Recommended | Alternative | Why Not |
-|----------|-------------|-------------|---------|
-| Extension framework | WXT | Plasmo | Custom Parcel fork, heavier abstraction, less transparent. CSUI is nice but WXT + manual Shadow DOM gives same result with more control. |
-| Extension framework | WXT | CRXJS | Development slowed, Chrome/Edge only, no built-in multi-browser support. |
-| Extension framework | WXT | Manual Vite | Too much boilerplate: manual manifest, no auto-reload for content scripts, no entrypoint conventions. |
-| Source maps | source-map-js | mozilla/source-map | Requires async WASM init, heavier for extension context. Sync API of source-map-js is simpler and sufficient. |
-| WebSocket (server) | ws | Socket.IO | Socket.IO adds protocol overhead, fallback transports we don't need (we control both endpoints on localhost), and 10x bundle size. |
-| WebSocket (server) | ws | µWebSockets.js | Overkill for single-client localhost. ws is simpler, pure JS, zero deps. |
-| Screenshot | captureVisibleTab | html2canvas | Re-renders DOM to canvas — misses CSS features, slower, inaccurate for complex pages. |
-| Screenshot | captureVisibleTab | dom-to-image | Same re-rendering approach, similar accuracy problems. |
-| Styling | Tailwind CSS v4 | CSS Modules | No utility classes, slower iteration for UI-heavy sidebar. Tailwind + Vite is zero-config in 2026. |
-| Styling | Tailwind CSS v4 | Styled Components | Runtime CSS-in-JS is deprecated pattern in React 19 era. Tailwind is compile-time. |
-| Schema validation | Zod | io-ts | More verbose, fp-ts dependency, smaller ecosystem. Zod v4 is faster and more ergonomic. |
-| Server framework | Raw Node.js + ws | Express + ws | Express adds unnecessary HTTP routing overhead. Our server is WebSocket-only (or nearly). |
-| Server framework | Raw Node.js + ws | Fastify | Same reasoning — WebSocket-first, not HTTP-first. |
-| Component library | shadcn/ui (optional) | Radix + custom | shadcn/ui wraps Radix with Tailwind — get both for free if we want pre-built components later. |
-## What NOT to Use
-| Avoid | Why | Use Instead |
-|-------|-----|-------------|
-| Manifest V2 | Deprecated and enforced off Chrome Web Store as of 2026 | Manifest V3 (WXT handles this) |
-| Persistent background pages | Not available in MV3, replaced by service workers | Event-driven service worker via WXT `background.ts` |
-| `eval()` / remote code execution | Banned in MV3 CSP | Bundle all code at build time (WXT does this) |
-| `webRequestBlocking` | Removed in MV3 | `declarativeNetRequest` (not needed for this project) |
-| Socket.IO | Protocol overhead, unnecessary fallback transports for localhost | Native WebSocket (client) + ws (server) |
-| html2canvas | Inaccurate DOM re-rendering, misses modern CSS | `chrome.tabs.captureVisibleTab()` + Canvas crop |
-| mozilla/source-map 0.7+ | WASM dependency, async-only API, complex init in extension context | source-map-js (sync, pure JS, same accuracy) |
-| Electron / standalone app | Heavy, unnecessary when Chrome extension + local server achieves the same | Chrome extension + Node.js server |
-| `chrome.storage.local` for large data | 10MB limit, not designed for screenshots or source maps | Keep large data in memory or pass via WebSocket (ephemeral) |
-| `window.localStorage` in content scripts | Shared with the inspected page, no isolation | `chrome.storage.session` for extension-scoped ephemeral state |
-| `child_process.exec` for Claude CLI | Buffers entire stdout in memory | `child_process.spawn` for streaming output |
-| Tailwind CSS v3 | Legacy config system, slower builds, no Oxide engine | Tailwind CSS v4.2 with CSS-first config |
-| npm / yarn classic | No workspace support (npm) or phantom dependencies (yarn) | pnpm for strict resolution and workspace support |
-## Chrome Extension Permissions Required
-## Version Confidence
-| Technology | Version | Confidence | Verification |
-|------------|---------|------------|--------------|
-| WXT | 0.20.20 | HIGH | npm registry, GitHub releases (March 2026) |
-| React | 19.0.4 | HIGH | npm registry, GitHub releases (January 2026) |
-| Tailwind CSS | 4.2.0 | HIGH | Official blog post (February 2026) |
-| ws | 8.20.0 | HIGH | npm registry (March 2026) |
-| source-map-js | 1.2.1 | HIGH | npm registry (82M weekly downloads) |
-| Zod | 4.3.6 | HIGH | npm registry (January 2026) |
-| Node.js | 22 LTS | HIGH | Official release schedule |
-| Chrome Side Panel API | Stable (Chrome 114+) | HIGH | Chrome for Developers docs |
-| Chrome captureVisibleTab | Stable | HIGH | Chrome Extensions API docs |
-| Service Worker WebSocket keepalive | Chrome 116+ | HIGH | Chrome for Developers tutorial |
-## Sources
-- WXT Official Docs: https://wxt.dev — framework features, file-based entrypoints, Vite 8 support
-- WXT GitHub: https://github.com/wxt-dev/wxt — v0.20.20 changelog, 9.5K stars
-- Chrome Extensions MV3 Docs: https://developer.chrome.com/docs/extensions/mv3
-- Chrome Side Panel API: https://developer.chrome.com/docs/extensions/reference/sidePanel
-- Chrome WebSocket in Service Workers: https://developer.chrome.com/docs/extensions/mv3/tut_websockets
-- source-map-js npm: https://www.npmjs.com/package/source-map-js — sync API, 82M downloads
-- ws npm: https://www.npmjs.com/package/ws — v8.20.0, 167M downloads
-- Zod v4 Release Notes: https://v4.zod.dev/v4 — performance benchmarks
-- Claude Code Headless Docs: https://code.claude.com/docs/en/headless — `-p` flag, `--output-format json`
-- React Fiber Access: Stack Overflow — `__reactFiber$` key pattern, main-world script injection
-- Tailwind CSS v4.2 Release: https://www.infoq.com/news/2026/04/tailwind-css-4-2-webpack/
-- WXT vs Plasmo vs CRXJS Comparison: https://trybuildpilot.com/649-wxt-vs-plasmo-vs-crxjs-2026
-<!-- GSD:stack-end -->
+### Step 0: Research _(new features only — skip for bug fixes)_
 
-<!-- GSD:conventions-start source:CONVENTIONS.md -->
-## Conventions
+Before planning any non-trivial feature:
 
-Conventions not yet established. Will populate as patterns emerge during development.
-<!-- GSD:conventions-end -->
+- Search for mature open-source libraries that solve the problem (npm, GitHub, etc.).
+- Research best practices and common patterns for this domain.
+- Evaluate trade-offs: proven library vs. custom (maintenance, bundle size, fit).
+- **Only build custom if no suitable library exists or fit is poor.**
 
-<!-- GSD:architecture-start source:ARCHITECTURE.md -->
-## Architecture
+Summarize findings before writing the Plan.
 
-Architecture not yet mapped. Follow existing patterns found in the codebase.
-<!-- GSD:architecture-end -->
+---
 
-<!-- GSD:skills-start source:skills/ -->
-## Project Skills
+### Step 1: Plan — OUTPUT PLAN, THEN STOP COMPLETELY
 
-No project skills found. Add skills to any of: `.claude/skills/`, `.agents/skills/`, `.cursor/skills/`, or `.github/skills/` with a `SKILL.md` index file.
-<!-- GSD:skills-end -->
+Output a plan using this exact format:
 
-<!-- GSD:workflow-start source:GSD defaults -->
-## GSD Workflow Enforcement
+```
+## Plan
+**Goal:** <one sentence>
+**Files:** <list of files to create/modify/delete>
+**Approach:** <how, key decisions, trade-offs, libraries chosen>
+**Risk:** <what could break, security implications>
+```
 
-Before using Edit, Write, or other file-changing tools, start work through a GSD command so planning artifacts and execution context stay in sync.
+**HARD RULES for Step 1:**
 
-Use these entry points:
-- `/gsd-quick` for small fixes, doc updates, and ad-hoc tasks
-- `/gsd-debug` for investigation and bug fixing
-- `/gsd-execute-phase` for planned phase work
+- After printing the Plan, your message ENDS. No code. No "I'll start by...". No partial implementations.
+- Do NOT call Edit, Write, Bash, or any file-modifying tool in this turn.
+- Do NOT proceed to Step 2 in the same response as the Plan.
+- Wait for the user to explicitly reply. Explicit approval = the user says something like "ok", "go", "approved", "yes", "继续", "好", or equivalent.
+- A user asking a clarifying question is NOT approval — answer it and wait again.
+- If the user approves but asks for changes to the plan, revise the plan and STOP again.
 
-Do not make direct repo edits outside a GSD workflow unless the user explicitly asks to bypass it.
-<!-- GSD:workflow-end -->
+**You are prohibited from starting Step 2 until you receive explicit approval in a separate user message.**
 
+After printing the Plan, always end your message with this exact line:
 
+> 请确认方案，我再执行。（回复 "ok" / "go" / "继续" / "好" 等均可）
 
-<!-- GSD:profile-start -->
-## Developer Profile
+---
 
-> Profile not yet configured. Run `/gsd-profile-user` to generate your developer profile.
-> This section is managed by `generate-claude-profile` -- do not edit manually.
-<!-- GSD:profile-end -->
+### Step 2: Execute
+
+Implement the approved plan exactly. If scope needs to change mid-implementation, STOP and re-plan (back to Step 1).
+
+---
+
+### Step 3: Verify
+
+- **Every feature must have test cases.** Add or update tests before marking done.
+- Run `bun test <affected paths>` — target only files touched by the change.
+- If the change touches shared logic or cross-cutting concerns, run `bun test` (all tests).
+- Fix all failures before proceeding.
+
+---
+
+### Step 4: Summary
+
+```
+## Summary
+**Changed:** <file list with one-line descriptions>
+**Tests:** <tests added/updated/passed>
+**Notes:** <anything the user should know>
+```
+
+Check uncommitted changes with `git status` and `git diff`. Then print:
+
+1. A short description of what the commit contains.
+2. A ready-to-run git command — do NOT execute it:
+
+```
+git add . && git commit -m "<type>(<scope>): <subject>
+
+- <key change 1>
+- <key change 2>"
+```
+
+Scopes: `extension`, `server`, `shared`.
+
+- Subject line: concise, imperative, ≤72 chars.
+- Bullet body: 3–6 meaningful changes, skip trivial details.
+
+---
+
+## Project Structure
+
+Monorepo with three packages:
+
+- `packages/extension` — Chrome extension (WXT + React 19 + Tailwind CSS 4)
+- `packages/server` — Local WebSocket server (Bun + Claude Agent SDK)
+- `packages/shared` — Shared types and Zod schemas (`@inspatch/shared`)
+
+Key scripts (run from root):
+
+- `bun dev` — start extension dev server
+- `bun server` — start backend server
+- `bun test` — run all tests
+
+---
+
+## Code Rules
+
+- Bun runtime. ESM only. No `require()`, no npm/yarn.
+- `bun:test` for testing. No Jest, no Vitest.
+- Single quotes, no semicolons, trailing commas, 2-space indent.
+- Cross-package imports: `@inspatch/shared`.
+- Comments in English only. Explain _why_, never _what_.
+- Add logs for errors always; key lifecycle events where useful. Remove noise-only logs before committing.
+- Tests in `__tests__/<SourceFile>.test.ts`.
+- Commits: `feat(scope): ...`, `fix(scope): ...`.
+
+## Code Quality
+
+- **No redundant code.** Extract repeated logic.
+- **Single responsibility.** One file = one clear purpose. Split large files proactively.
+- **Encapsulate shared logic** into utilities or hooks — never copy-paste.
+- **No dead code**, no unused imports, no commented-out code.
+- Functions: small, single-purpose, early returns.
+- Naming: self-explanatory — if it needs a comment, rename it.
+- Keep folder structure clean and intentional.
+
+## Security
+
+- Validate all external input with Zod at the API boundary.
+- The server only binds to `127.0.0.1` — never expose it to external interfaces.
+- Never log or hardcode secrets, tokens, or private keys.
+- Never commit `.env`.
+
+---
+
+## Self-Check Before Every Response
+
+Before generating any response to a code change request, answer these:
+
+1. Have I output a Plan yet? If no → go to Step 1.
+2. Has the user explicitly approved the Plan in their last message? If no → do not write any code.
+3. Am I about to call Edit/Write/Bash? If yes and Step 2 hasn't started → STOP.

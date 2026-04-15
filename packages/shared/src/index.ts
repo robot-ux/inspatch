@@ -1,6 +1,7 @@
 export {
   ConnectionStatusSchema,
   ElementSelectionSchema,
+  ConsoleErrorSchema,
   ChangeRequestSchema,
   StatusUpdateSchema,
   ChangeResultSchema,
@@ -16,6 +17,7 @@ export {
 export type {
   ConnectionStatus,
   ElementSelection,
+  ConsoleError,
   ChangeRequest,
   StatusUpdate,
   ChangeResult,

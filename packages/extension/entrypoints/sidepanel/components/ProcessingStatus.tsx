@@ -1,5 +1,77 @@
 import { useRef, useEffect, useState } from "react";
+import ReactMarkdown from "react-markdown";
 import type { StatusUpdate, ChangeResult } from "@inspatch/shared";
+
+// Markdown component overrides matching the existing design system
+const mdComponents = {
+  p: ({ children }: { children?: React.ReactNode }) => (
+    <p className="text-[12px] text-ip-text-secondary leading-relaxed">{children}</p>
+  ),
+  strong: ({ children }: { children?: React.ReactNode }) => (
+    <strong className="font-semibold text-ip-text-primary">{children}</strong>
+  ),
+  em: ({ children }: { children?: React.ReactNode }) => (
+    <em className="italic text-ip-text-secondary">{children}</em>
+  ),
+  code: ({ children, className }: { children?: React.ReactNode; className?: string }) => {
+    // block code has a language className, inline does not
+    const isBlock = !!className
+    if (isBlock) {
+      return (
+        <code className="block font-code text-[11px] text-ip-text-secondary bg-ip-bg-primary rounded-[var(--ip-radius-sm)] p-2 mt-1 overflow-x-auto whitespace-pre">
+          {children}
+        </code>
+      )
+    }
+    return (
+      <code className="font-code text-[11px] text-ip-text-accent bg-ip-bg-primary px-1 py-0.5 rounded">
+        {children}
+      </code>
+    )
+  },
+  pre: ({ children }: { children?: React.ReactNode }) => (
+    <pre className="mt-1">{children}</pre>
+  ),
+  ul: ({ children }: { children?: React.ReactNode }) => (
+    <ul className="space-y-0.5 pl-3 list-disc list-outside marker:text-ip-text-muted">{children}</ul>
+  ),
+  ol: ({ children }: { children?: React.ReactNode }) => (
+    <ol className="space-y-0.5 pl-3 list-decimal list-outside marker:text-ip-text-muted">{children}</ol>
+  ),
+  li: ({ children }: { children?: React.ReactNode }) => (
+    <li className="text-[12px] text-ip-text-secondary leading-relaxed">{children}</li>
+  ),
+  h1: ({ children }: { children?: React.ReactNode }) => (
+    <h1 className="text-[13px] font-semibold text-ip-text-primary">{children}</h1>
+  ),
+  h2: ({ children }: { children?: React.ReactNode }) => (
+    <h2 className="text-[13px] font-semibold text-ip-text-primary">{children}</h2>
+  ),
+  h3: ({ children }: { children?: React.ReactNode }) => (
+    <h3 className="text-[12px] font-semibold text-ip-text-primary">{children}</h3>
+  ),
+}
+
+function OperationLog({ entries }: { entries: string[] }) {
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (ref.current) ref.current.scrollTop = ref.current.scrollHeight;
+  }, [entries]);
+  return (
+    <div ref={ref} className="max-h-20 overflow-y-auto space-y-0.5">
+      {entries.map((entry, i) => (
+        <p
+          key={i}
+          className={`text-[11px] font-code truncate ${
+            i === entries.length - 1 ? "text-ip-text-secondary" : "text-ip-text-muted"
+          }`}
+        >
+          {entry}
+        </p>
+      ))}
+    </div>
+  );
+}
 
 const statusLabels: Record<string, { label: string; color: string }> = {
   queued: { label: "Queued", color: "text-ip-text-muted" },
@@ -43,11 +115,12 @@ interface ProcessingStatusProps {
   statusUpdate: StatusUpdate | null;
   changeResult: ChangeResult | null;
   streamedText: string;
+  statusLog?: string[];
   onRetry?: () => void;
 }
 
-export function ProcessingStatus({ statusUpdate, changeResult, streamedText, onRetry }: ProcessingStatusProps) {
-  const textRef = useRef<HTMLPreElement>(null);
+export function ProcessingStatus({ statusUpdate, changeResult, streamedText, statusLog, onRetry }: ProcessingStatusProps) {
+  const textRef = useRef<HTMLDivElement>(null);
   const [copied, setCopied] = useState<string | null>(null);
 
   const copyToClipboard = (text: string, id: string) => {
@@ -68,9 +141,13 @@ export function ProcessingStatus({ statusUpdate, changeResult, streamedText, onR
     if (changeResult.success) {
       return (
         <div className="rounded-ip-lg border p-4 space-y-2 animate-fade-in-scale border-[rgba(34,197,94,0.3)] bg-ip-success-muted">
-          <div className="flex items-center gap-2">
+          {changeResult.summary ? (
+            <div className="space-y-1.5">
+              <ReactMarkdown components={mdComponents}>{changeResult.summary}</ReactMarkdown>
+            </div>
+          ) : (
             <span className="text-[13px] font-semibold text-ip-success">Changes applied</span>
-          </div>
+          )}
 
           {changeResult.filesModified && changeResult.filesModified.length > 0 && (
             <div className="space-y-1">
@@ -140,7 +217,11 @@ export function ProcessingStatus({ statusUpdate, changeResult, streamedText, onR
           </span>
         </div>
 
-        <p className="text-[12px] text-ip-text-secondary">{statusUpdate.message}</p>
+        {statusLog && statusLog.length > 0 ? (
+          <OperationLog entries={statusLog} />
+        ) : (
+          <p className="text-[12px] text-ip-text-secondary">{statusUpdate.message}</p>
+        )}
 
         {streamedText && (
           <div className="relative group">
@@ -150,12 +231,12 @@ export function ProcessingStatus({ statusUpdate, changeResult, streamedText, onR
             >
               {copied === 'stream' ? 'Copied' : 'Copy'}
             </button>
-            <pre
+            <div
               ref={textRef}
-              className="text-[11px] font-code text-ip-text-secondary bg-ip-bg-primary rounded-[var(--ip-radius-sm)] p-2 max-h-32 overflow-y-auto whitespace-pre-wrap break-words"
+              className="bg-ip-bg-primary rounded-[var(--ip-radius-sm)] p-2 max-h-32 overflow-y-auto space-y-1.5"
             >
-              {streamedText}
-            </pre>
+              <ReactMarkdown components={mdComponents}>{streamedText}</ReactMarkdown>
+            </div>
           </div>
         )}
       </div>

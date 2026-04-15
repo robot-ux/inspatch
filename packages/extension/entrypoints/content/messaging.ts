@@ -2,7 +2,7 @@ import { createLogger } from '@inspatch/shared';
 import type { InspectMode } from './inspect-mode';
 import { getXPath, getUniqueSelector } from './element-detector';
 import { queryFiber } from './fiber-bridge';
-import { resolveSourceLocation, findComponentSource } from './source-resolver';
+import { normalizeSourcePath, findComponentSource } from './source-resolver';
 
 const logger = createLogger('messaging');
 
@@ -89,19 +89,10 @@ export async function sendElementSelection(el: Element): Promise<void> {
     }
 
     if (fiberResult.debugSource) {
-      const resolved = await resolveSourceLocation(
-        fiberResult.debugSource.fileName,
-        fiberResult.debugSource.lineNumber,
-        0,
-      );
-      if (resolved) {
-        payload.sourceFile = resolved.source;
-        payload.sourceLine = resolved.line;
-        payload.sourceColumn = resolved.column;
-      } else {
-        payload.sourceFile = fiberResult.debugSource.fileName;
-        payload.sourceLine = fiberResult.debugSource.lineNumber;
-      }
+      // _debugSource.fileName is already the original source path — use it directly.
+      // Re-running through source map resolution would produce wrong line numbers.
+      payload.sourceFile = normalizeSourcePath(fiberResult.debugSource.fileName);
+      payload.sourceLine = fiberResult.debugSource.lineNumber;
     } else if (fiberResult.componentName) {
       const found = await findComponentSource(fiberResult.componentName);
       if (found) {

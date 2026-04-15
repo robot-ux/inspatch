@@ -12,10 +12,33 @@ function isLocalUrl(url: string): boolean {
   return url.startsWith("http://localhost:") || url.startsWith("http://127.0.0.1:");
 }
 
+// Normalize any source URL/path to a usable file path.
+// Handles: webpack://, Vite localhost URLs, /@fs/ absolute paths, relative paths.
+export function normalizeSourcePath(source: string): string {
+  let path = source;
+
+  // webpack://[package]/./src/Foo.tsx  →  src/Foo.tsx
+  path = path.replace(/^webpack:\/\/[^/]*\//, "").replace(/^\.\/?/, "");
+
+  // http://localhost:PORT/src/Foo.tsx  →  src/Foo.tsx
+  try {
+    const url = new URL(path);
+    if (url.hostname === "localhost" || url.hostname === "127.0.0.1") {
+      path = url.pathname.replace(/^\//, "");
+    }
+  } catch {
+    // Not a URL, continue
+  }
+
+  // /@fs/Users/.../src/Foo.tsx  →  /Users/.../src/Foo.tsx (absolute path)
+  if (path.startsWith("/@fs/")) path = path.slice(4);
+
+  return path;
+}
+
+// Keep internal alias for use within this file
 function normalizePath(source: string): string {
-  return source
-    .replace(/^webpack:\/\/[^/]*\//, "")
-    .replace(/^\.\/?/, "");
+  return normalizeSourcePath(source);
 }
 
 async function getOrFetchSourceMap(url: string): Promise<SourceMapConsumer | null> {

@@ -1,22 +1,33 @@
 import type { Server } from "bun";
 import { parseMessage, createLogger } from "@inspatch/shared";
+import { openInEditor, type EditorScheme } from "./editor";
 import { RequestQueue, type WSData } from "./queue";
 
 const logger = createLogger("ws");
 
 export const SERVER_VERSION = "0.0.1";
 
-export function createServer(port: number, projectDir: string): Server<WSData> {
-  const queue = new RequestQueue(projectDir);
+export type { EditorScheme };
+export { detectEditor } from "./editor";
+
+export function createServer(port: number, projectDir: string, editor: EditorScheme, timeoutMs = 1_800_000): Server<WSData> {
+  const queue = new RequestQueue(projectDir, timeoutMs);
 
   const server = Bun.serve<WSData>({
     hostname: "127.0.0.1",
     port,
+    // fetch must NOT be async — server.upgrade() requires a synchronous return
+    // of undefined so Bun knows the request was handed off to the WebSocket handler.
+    // Async paths (open-in-editor) are delegated to a separate async function.
     fetch(req, server) {
       const url = new URL(req.url);
 
       if (url.pathname === "/health") {
         return Response.json({ status: "ok", version: SERVER_VERSION });
+      }
+
+      if (url.pathname === "/open-in-editor") {
+        return openInEditor(url, projectDir, editor);
       }
 
       const upgraded = server.upgrade(req, {
@@ -70,6 +81,12 @@ export function createServer(port: number, projectDir: string): Server<WSData> {
         if (msg.type === "change_request") {
           logger.info(`Change request from ${ws.data.id}: "${msg.description}"`);
           queue.enqueue(msg, ws);
+          return;
+        }
+
+        if (msg.type === "resume") {
+          logger.info(`Resume request from ${ws.data.id}: ${msg.requestId}`);
+          queue.handleResume(msg.requestId, ws);
           return;
         }
 

@@ -5,7 +5,7 @@
   "type": "module",
   "main": "src/index.ts",
   "bin": {
-    "@inspatch/server": "src/index.ts"
+    "@inspatch/server": "bin/run.cjs"
   },
   "scripts": {
     "start": "bun run src/index.ts",
@@ -13,7 +13,8 @@
   },
   "dependencies": {
     "@anthropic-ai/claude-agent-sdk": "^0.2.107",
-    "@inspatch/shared": "workspace:*"
+    "@inspatch/shared": "workspace:*",
+    "bun": "^1.0.0"
   },
   "devDependencies": {
     "@types/bun": "^1.3.12",

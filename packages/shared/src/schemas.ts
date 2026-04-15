@@ -29,6 +29,12 @@ export const ElementSelectionSchema = z.object({
   computedStyles: z.record(z.string(), z.string()).optional(),
 });
 
+export const ConsoleErrorSchema = z.object({
+  message: z.string(),
+  stack: z.string().optional(),
+  timestamp: z.number(),
+});
+
 export const ChangeRequestSchema = z.object({
   type: z.literal("change_request"),
   requestId: z.string().optional(),
@@ -42,6 +48,7 @@ export const ChangeRequestSchema = z.object({
   screenshotDataUrl: z.string().optional(),
   boundingRect: BoundingRectSchema.optional(),
   computedStyles: z.record(z.string(), z.string()).optional(),
+  consoleErrors: z.array(ConsoleErrorSchema).optional(),
 });
 
 export const StatusUpdateSchema = z.object({
@@ -59,6 +66,7 @@ export const ChangeResultSchema = z.object({
   success: z.boolean(),
   diff: z.string().optional(),
   filesModified: z.array(z.string()).optional(),
+  summary: z.string().optional(),
   error: z.string().optional(),
 });
 
@@ -69,19 +77,34 @@ export const InspectCommandSchema = z.discriminatedUnion("type", [
 
 export type InspectCommand = z.infer<typeof InspectCommandSchema>;
 
+export const ResumeRequestSchema = z.object({
+  type: z.literal("resume"),
+  requestId: z.string(),
+});
+
+export const ResumeNotFoundSchema = z.object({
+  type: z.literal("resume_not_found"),
+  requestId: z.string(),
+});
+
 export const MessageSchema = z.discriminatedUnion("type", [
   ConnectionStatusSchema,
   ElementSelectionSchema,
   ChangeRequestSchema,
   StatusUpdateSchema,
   ChangeResultSchema,
+  ResumeRequestSchema,
+  ResumeNotFoundSchema,
 ]);
 
 export type ConnectionStatus = z.infer<typeof ConnectionStatusSchema>;
 export type ElementSelection = z.infer<typeof ElementSelectionSchema>;
+export type ConsoleError = z.infer<typeof ConsoleErrorSchema>;
 export type ChangeRequest = z.infer<typeof ChangeRequestSchema>;
 export type StatusUpdate = z.infer<typeof StatusUpdateSchema>;
 export type ChangeResult = z.infer<typeof ChangeResultSchema>;
+export type ResumeRequest = z.infer<typeof ResumeRequestSchema>;
+export type ResumeNotFound = z.infer<typeof ResumeNotFoundSchema>;
 export type Message = z.infer<typeof MessageSchema>;
 
 export const PingSchema = z.object({ type: z.literal("ping") });

@@ -21,7 +21,7 @@ export default defineConfig({
     host_permissions: ['http://localhost/*'],
     web_accessible_resources: [
       {
-        resources: ['fiber-main-world.js'],
+        resources: ['fiber-main-world.js', 'console-main-world.js'],
         matches: ['http://localhost/*'],
       },
     ],

@@ -12,6 +12,7 @@ export interface RunResult {
   success: boolean;
   resultText?: string;
   filesModified?: string[];
+  summary?: string;
   error?: string;
 }
 
@@ -60,13 +61,32 @@ function buildPromptText(req: ChangeRequest): string {
     lines.push("", "The user has also attached a screenshot of the element for visual reference.");
   }
 
+  if (req.consoleErrors?.length) {
+    lines.push("", "## Console Errors");
+    lines.push("The following errors are currently in the browser console:");
+    for (const err of req.consoleErrors) {
+      lines.push(`- ${err.message}`);
+      if (err.stack) {
+        const trace = err.stack.split("\n").slice(1, 3).join(" | ").trim();
+        if (trace) lines.push(`  ${trace}`);
+      }
+    }
+    lines.push("", "Fix any of these errors that are related to the selected component or the user's request.");
+  }
+
   lines.push(
     "",
     "## Instructions",
     "1. Find the source file and make the changes described by the user",
     "2. Only modify what's needed — don't refactor unrelated code",
     "3. If the source file path looks like a URL or relative to a dev server, search for it in the project",
-    "4. After making changes, briefly describe what you changed",
+    "4. Fix any related console errors from the list above if present",
+    "5. End your response with this exact block:",
+    "",
+    "## Summary",
+    "**UI changes:** <what visually changed, or \"none\">",
+    "**Errors fixed:** <which console errors were resolved, or \"none\">",
+    "**Files modified:** `file1.tsx`, `file2.ts`",
   );
 
   return lines.join("\n");
@@ -134,11 +154,28 @@ function extractToolNameFromMessage(msg: SDKMessage): string | null {
   return null;
 }
 
+function extractToolInputDetail(msg: SDKMessage): string | null {
+  if (msg.type !== "assistant") return null;
+  const content = (msg.message as { content?: unknown[] })?.content;
+  if (!Array.isArray(content)) return null;
+  const toolUse = content.find((b: unknown) => (b as { type: string }).type === "tool_use");
+  if (!toolUse) return null;
+  const input = (toolUse as { input?: Record<string, unknown> }).input;
+  if (!input) return null;
+  if (typeof input.file_path === "string") {
+    return input.file_path.split("/").slice(-2).join("/");
+  }
+  if (typeof input.pattern === "string") return `"${input.pattern}"`;
+  if (typeof input.command === "string") return String(input.command).slice(0, 60);
+  return null;
+}
+
 export async function runClaude(
   req: ChangeRequest,
   projectDir: string,
   onStatus: StatusCallback,
   signal?: AbortSignal,
+  timeoutMs = 1_800_000,
 ): Promise<RunResult> {
   logger.info("Starting Claude Code SDK for:", req.description.slice(0, 100));
   logger.info(`Project dir: ${projectDir}`);
@@ -154,9 +191,9 @@ export async function runClaude(
   }
 
   const timeout = setTimeout(() => {
-    logger.warn("Timeout reached (120s), aborting");
+    logger.warn(`Timeout reached (${timeoutMs / 1000}s), aborting`);
     abortController.abort();
-  }, 120_000);
+  }, timeoutMs);
 
   let fullText = "";
   let currentStatus = "analyzing";
@@ -188,15 +225,16 @@ export async function runClaude(
 
         const toolName = extractToolNameFromMessage(msg);
         if (toolName) {
-          logger.info(`Tool: ${toolName}`);
+          const detail = extractToolInputDetail(msg);
+          logger.info(`[${toolName}] ${detail ?? ""}`);
           if (["Read", "Grep", "Glob"].includes(toolName)) {
             currentStatus = "locating";
-            onStatus(currentStatus, "Reading files...");
+            onStatus(currentStatus, detail ? `Reading ${detail}` : "Reading files...");
           } else if (["Edit", "Write", "MultiEdit"].includes(toolName)) {
             currentStatus = "applying";
-            onStatus(currentStatus, "Applying changes...");
+            onStatus(currentStatus, detail ? `Editing ${detail}` : "Applying changes...");
           } else if (toolName === "Bash") {
-            onStatus(currentStatus, "Running command...");
+            onStatus(currentStatus, detail ? `Running: ${detail}` : "Running command...");
           }
         }
       } else if (msg.type === "result") {
@@ -231,14 +269,26 @@ export async function runClaude(
 
   clearTimeout(timeout);
 
+  const finalText = resultText || fullText;
   return {
     success: true,
-    resultText: resultText || fullText,
+    resultText: finalText,
     filesModified,
+    summary: extractSummary(finalText),
   };
 }
 
 function extractModifiedFiles(text: string): string[] {
+  // Try structured summary first
+  const filesLine = text.match(/\*\*Files modified:\*\*\s*(.+)/i);
+  if (filesLine) {
+    const files = [...filesLine[1].matchAll(/`([^`]+)`/g)]
+      .map(m => m[1])
+      .filter(f => f.includes(".") && !f.includes(" "));
+    if (files.length) return files;
+  }
+
+  // Fallback: scan for edit/write verbs
   const files = new Set<string>();
   const patterns = [
     /(?:edited|modified|updated|changed|wrote|created)\s+`([^`]+)`/gi,
@@ -255,9 +305,16 @@ function extractModifiedFiles(text: string): string[] {
   return [...files];
 }
 
-export async function getGitDiff(projectDir: string): Promise<string | null> {
+function extractSummary(text: string): string | undefined {
+  const match = text.match(/## Summary\n([\s\S]+?)(?:\n##\s|\n---|\n\n\n|$)/);
+  return match?.[1].trim();
+}
+
+export async function getGitDiff(projectDir: string, files?: string[]): Promise<string | null> {
   try {
-    const proc = Bun.spawn(["git", "diff", "--stat", "--patch", "--no-color"], {
+    const args = ["diff", "--stat", "--patch", "--no-color"];
+    if (files?.length) args.push("--", ...files);
+    const proc = Bun.spawn(["git", ...args], {
       cwd: projectDir,
       stdout: "pipe",
       stderr: "pipe",

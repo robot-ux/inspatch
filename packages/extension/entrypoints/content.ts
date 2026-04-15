@@ -3,6 +3,7 @@ import { createOverlayHost, createOverlayLayers } from './content/overlay-manage
 import { InspectMode } from './content/inspect-mode';
 import { setupMessageListeners, sendElementSelection } from './content/messaging';
 import { initFiberBridge } from './content/fiber-bridge';
+import { initConsoleBridge } from './content/console-bridge';
 import { clearSourceMapCache } from './content/source-resolver';
 
 const logger = createLogger('content');
@@ -13,6 +14,7 @@ export default defineContentScript({
     logger.debug('Content script loaded on', location.href);
 
     initFiberBridge().catch(() => {});
+    const cleanupConsole = initConsoleBridge();
 
     const { host, shadow } = createOverlayHost();
     const layers = createOverlayLayers(shadow);
@@ -37,6 +39,7 @@ export default defineContentScript({
       logger.debug('Content script invalidated');
       inspectMode.stop();
       cleanupMessaging();
+      cleanupConsole();
       clearSourceMapCache();
       host.remove();
     });
