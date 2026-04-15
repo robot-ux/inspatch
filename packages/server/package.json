@@ -1,7 +1,6 @@
 {
   "name": "@inspatch/server",
   "version": "0.0.1",
-  "private": true,
   "type": "module",
   "main": "src/index.ts",
   "bin": {
@@ -10,6 +9,9 @@
   "scripts": {
     "start": "bun run src/index.ts",
     "test": "bun test"
+  },
+  "publishConfig": {
+    "access": "public"
   },
   "dependencies": {
     "@anthropic-ai/claude-agent-sdk": "^0.2.107",

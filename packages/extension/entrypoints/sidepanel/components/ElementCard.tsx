@@ -1,24 +1,32 @@
 import { useState } from 'react'
 import type { ElementSelection } from '@inspatch/shared'
 import type { EditorChoice } from './HeaderBar'
-import { ChevronIcon } from './icons'
+import { ChevronIcon, XIcon } from './icons'
 
 interface ElementCardProps {
   element: ElementSelection
   editor: EditorChoice
   onHover: () => void
   onLeave: () => void
+  onClear: () => void
 }
 
-export function ElementCard({ element, editor, onHover, onLeave }: ElementCardProps) {
+export function ElementCard({ element, editor, onHover, onLeave, onClear }: ElementCardProps) {
   const [chainExpanded, setChainExpanded] = useState(false)
 
   return (
     <div
-      className="bg-ip-bg-card rounded-ip-lg border border-ip-border-subtle p-4 space-y-2 cursor-pointer hover:border-ip-border-accent hover:shadow-ip-glow-accent transition-all duration-200 shadow-ip-card animate-slide-up"
+      className="relative bg-ip-bg-card rounded-ip-lg border border-ip-border-subtle p-4 space-y-2 cursor-pointer hover:border-ip-border-accent hover:shadow-ip-glow-accent transition-all duration-200 shadow-ip-card animate-slide-up"
       onMouseEnter={onHover}
       onMouseLeave={onLeave}
     >
+      <button
+        onClick={e => { e.stopPropagation(); onClear() }}
+        title="Clear selection"
+        className="absolute top-2 right-2 w-6 h-6 flex items-center justify-center rounded text-ip-text-muted hover:text-ip-error hover:bg-ip-error/10 transition-all duration-150 active:scale-95"
+      >
+        <XIcon className="w-3.5 h-3.5" />
+      </button>
       <div className="flex items-baseline justify-between">
         <span className="text-[16px] font-code font-semibold text-ip-text-primary">
           {element.tagName}

@@ -11,6 +11,10 @@
 You MUST follow these steps in strict order for every code change request.
 If you find yourself about to write code or call Edit/Write/Bash without having completed Step 1 AND received explicit user approval — STOP. Go back to Step 1.
 
+**Approval prompt rule:** Whenever you are waiting for the user to approve before you can proceed (after a Plan, before executing a risky action, before committing, etc.), always end your message with:
+
+> 请确认方案，我再执行。（回复 "ok" / "go" / "继续" / "好" 等均可）
+
 ---
 
 ### Step 0: Research _(new features only — skip for bug fixes)_
@@ -48,10 +52,6 @@ Output a plan using this exact format:
 - If the user approves but asks for changes to the plan, revise the plan and STOP again.
 
 **You are prohibited from starting Step 2 until you receive explicit approval in a separate user message.**
-
-After printing the Plan, always end your message with this exact line:
-
-> 请确认方案，我再执行。（回复 "ok" / "go" / "继续" / "好" 等均可）
 
 ---
 

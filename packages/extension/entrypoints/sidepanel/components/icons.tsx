@@ -2,6 +2,24 @@ interface IconProps {
   className?: string
 }
 
+export function InspatchLogoIcon({ className }: IconProps) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+      {/* Dashed selection rectangle — fills the icon */}
+      <rect
+        x="2" y="2" width="20" height="20" rx="2"
+        stroke="currentColor" strokeWidth="1.5"
+        strokeDasharray="3 2"
+      />
+      {/* Cursor arrow — body at bottom-right corner, tip pointing toward center */}
+      <path
+        fill="currentColor"
+        d="M11 11 L11 20 L13.5 17.5 L16 22 L17.5 21.5 L15 17 L17.5 17 Z"
+      />
+    </svg>
+  )
+}
+
 export function CrosshairIcon({ className }: IconProps) {
   return (
     <svg className={className} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">

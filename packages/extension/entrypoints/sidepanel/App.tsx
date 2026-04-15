@@ -137,6 +137,8 @@ export default function App() {
       // only update for http/https — chrome-extension://, chrome://, about: etc.
       // (e.g. wallet popups) must not flip the localhost detection state
       if (tab?.url?.startsWith('http')) setIsLocalhost(isLocalhostUrl(tab.url))
+      // blank tabs (new tab, no URL) are definitively not localhost
+      else if (!tab?.url) setIsLocalhost(false)
     }
     checkTab()
 
@@ -307,10 +309,8 @@ export default function App() {
         onEditorChange={handleEditorChange}
         compact={showCompactHeader}
         isInspecting={sidebarState === 'inspecting'}
-        hasSelectedElement={!!selectedElement}
         inspectDisabled={status !== 'connected'}
         onInspect={sidebarState === 'inspecting' ? handleStopInspect : handleStartInspect}
-        onClear={handleClear}
       />
 
       {error && (
@@ -384,6 +384,7 @@ export default function App() {
             editor={editor}
             onHover={handleElementHover}
             onLeave={handleElementLeave}
+            onClear={handleClear}
           />
         )}
 
