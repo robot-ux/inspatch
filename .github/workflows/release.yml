@@ -56,6 +56,14 @@ jobs:
             });
           "
 
+      - name: Configure npm auth
+        run: npm config set //registry.npmjs.org/:_authToken ${{ secrets.NPM_TOKEN }}
+
+      - name: Publish to npm
+        run: |
+          cd packages/shared && bun publish --no-git-checks
+          cd ../server && bun publish --no-git-checks
+
       - name: Commit, tag and push
         run: |
           git config user.name "github-actions[bot]"
@@ -65,17 +73,6 @@ jobs:
           git tag "${{ steps.version.outputs.tag }}"
           git push origin HEAD
           git push origin "${{ steps.version.outputs.tag }}"
-
-      - uses: actions/setup-node@v4
-        with:
-          registry-url: 'https://registry.npmjs.org'
-
-      - name: Publish to npm
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-        run: |
-          cd packages/shared && bun publish --no-git-checks
-          cd ../server && bun publish --no-git-checks
 
       - name: Build Chrome extension
         working-directory: packages/extension
