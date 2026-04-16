@@ -61,7 +61,7 @@ jobs:
           cd packages/shared && bun publish --no-git-checks
           cd ../server && bun publish --no-git-checks
         env:
-          BUN_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          NPM_CONFIG_TOKEN: ${{ secrets.NPM_TOKEN }}
 
       - name: Commit, tag and push
         run: |
