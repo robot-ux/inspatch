@@ -8,9 +8,5 @@
     "server": "cd packages/server && bun run src/index.ts",
     "test": "bun test",
     "lint": "echo 'lint configuration pending'",
-    "ci:publish": "changeset publish"
-  },
-  "devDependencies": {
-    "@changesets/cli": "^2.27.0"
   }
 }

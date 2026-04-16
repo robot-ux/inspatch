@@ -14,6 +14,9 @@ export default defineConfig({
       cors: true,
     },
   }),
+  zip: {
+    artifactTemplate: 'inspatch-{{version}}-{{browser}}.zip',
+  },
   manifest: {
     name: 'Inspatch',
     description: 'Visual code editing for locally-served web pages',
