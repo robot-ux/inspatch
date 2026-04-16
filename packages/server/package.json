@@ -4,7 +4,7 @@
   "type": "module",
   "main": "src/index.ts",
   "bin": {
-    "@inspatch/server": "bin/run.cjs"
+    "inspatch-server": "bin/run.cjs"
   },
   "scripts": {
     "start": "bun run src/index.ts",

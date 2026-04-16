@@ -73,6 +73,29 @@ jobs:
           git push origin HEAD
           git push origin "${{ steps.version.outputs.tag }}"
 
+      - name: Generate release notes
+        id: notes
+        run: |
+          PREV_TAG=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")
+          RANGE="${PREV_TAG:+$PREV_TAG..}HEAD"
+          node -e "
+            const { execSync } = require('child_process')
+            const log = execSync('git log $RANGE --pretty=format:\"%s\"').toString().trim()
+            const commits = log ? log.split('\n') : []
+            const sections = { feat: [], fix: [], perf: [] }
+            const labels = { feat: '✨ Features', fix: '🐛 Bug Fixes', perf: '⚡ Performance' }
+            for (const msg of commits) {
+              const m = msg.match(/^(feat|fix|perf)(\(([^)]+)\))?: (.+)/)
+              if (m) sections[m[1]].push(m[3] ? \`**\${m[3]}**: \${m[4]}\` : m[4])
+            }
+            let body = ''
+            for (const [type, items] of Object.entries(sections)) {
+              if (items.length) body += \`## \${labels[type]}\n\${items.map(i => '- ' + i).join('\n')}\n\n\`
+            }
+            if (!body) body = 'Maintenance release.'
+            require('fs').appendFileSync(process.env.GITHUB_OUTPUT, 'body<<EOF\n' + body.trim() + '\nEOF\n')
+          "
+
       - name: Build Chrome extension
         working-directory: packages/extension
         run: bun run zip
@@ -82,5 +105,5 @@ jobs:
         with:
           tag_name: ${{ steps.version.outputs.tag }}
           name: '@inspatch/server ${{ steps.version.outputs.tag }}'
-          generate_release_notes: true
+          body: ${{ steps.notes.outputs.body }}
           files: packages/extension/.output/*.zip
