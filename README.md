@@ -107,8 +107,8 @@ The action publishes `@inspatch/shared` and `@inspatch/server` to npm, creates a
 
 Use [Conventional Commits](https://www.conventionalcommits.org) — the changeset description is what appears in the changelog:
 
-| Prefix | When to use |
-|--------|-------------|
-| `feat` | New feature |
-| `fix` | Bug fix |
+| Prefix  | When to use               |
+| ------- | ------------------------- |
+| `feat`  | New feature               |
+| `fix`   | Bug fix                   |
 | `chore` | Maintenance, deps, config |

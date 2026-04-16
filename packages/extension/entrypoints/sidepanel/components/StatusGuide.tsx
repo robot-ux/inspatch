@@ -10,7 +10,7 @@ export function StatusGuide({ onReconnect }: StatusGuideProps) {
       </p>
       <div className="w-full bg-ip-bg-primary rounded-ip-md p-3">
         <code className="text-[12px] font-code text-ip-success block whitespace-pre-wrap">
-          {`cd your-project\nbunx @inspatch/server --project .`}
+          {`cd your-project\nnpx @inspatch/server --project .`}
         </code>
       </div>
       <button
