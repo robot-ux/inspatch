@@ -30,16 +30,18 @@ Download the latest `inspatch-extension-*.zip` from the [Releases](../../release
 Point the server at your project directory:
 
 ```bash
-npx @inspatch/server --project ./my-react-app
+npx @inspatch/server ./my-react-app
 ```
 
 The server starts on `ws://127.0.0.1:9377` by default.
 
 ```
 Options:
-  --project <dir>   Target project directory (required)
-  --port <number>   WebSocket port (default: 9377)
-  -h, --help        Show help
+  -p, --project <dir>      Target project directory (required)
+  --port <number>          WebSocket port (default: 9377)
+  --editor <cursor|vscode> Editor to open files in (default: auto-detect)
+  --timeout <seconds>      Claude runner timeout in seconds (default: 1800)
+  -h, --help               Show help
 ```
 
 ### 3. Use it
@@ -74,41 +76,3 @@ bun server --project ./path/to/app
 # Run tests
 bun test
 ```
-
-## Release
-
-Releases are automated via [Changesets](https://github.com/changesets/changesets). Pushing to `main` triggers the release workflow:
-
-- **If changeset files are present** → GitHub Actions opens a "chore: release packages" PR with version bumps and changelogs
-- **If no changeset files** → nothing happens
-
-### Publishing a new version
-
-**1. Create a changeset** (after making your changes):
-
-```bash
-bunx changeset
-# → select which packages changed: @inspatch/server, @inspatch/shared, or both
-# → select bump type: patch / minor / major
-# → write a short description
-```
-
-This creates a `.changeset/*.md` file — commit it alongside your code changes.
-
-**2. Push to main**
-
-The action detects the changeset and opens a PR titled "chore: release packages". Review the version bumps and changelog, then merge.
-
-**3. Merge the PR**
-
-The action publishes `@inspatch/shared` and `@inspatch/server` to npm, creates a GitHub Release, and attaches the Chrome extension zip automatically.
-
-### Commit message conventions
-
-Use [Conventional Commits](https://www.conventionalcommits.org) — the changeset description is what appears in the changelog:
-
-| Prefix  | When to use               |
-| ------- | ------------------------- |
-| `feat`  | New feature               |
-| `fix`   | Bug fix                   |
-| `chore` | Maintenance, deps, config |
