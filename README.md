@@ -74,3 +74,41 @@ bun server --project ./path/to/app
 # Run tests
 bun test
 ```
+
+## Release
+
+Releases are automated via [Changesets](https://github.com/changesets/changesets). Pushing to `main` triggers the release workflow:
+
+- **If changeset files are present** → GitHub Actions opens a "chore: release packages" PR with version bumps and changelogs
+- **If no changeset files** → nothing happens
+
+### Publishing a new version
+
+**1. Create a changeset** (after making your changes):
+
+```bash
+bunx changeset
+# → select which packages changed: @inspatch/server, @inspatch/shared, or both
+# → select bump type: patch / minor / major
+# → write a short description
+```
+
+This creates a `.changeset/*.md` file — commit it alongside your code changes.
+
+**2. Push to main**
+
+The action detects the changeset and opens a PR titled "chore: release packages". Review the version bumps and changelog, then merge.
+
+**3. Merge the PR**
+
+The action publishes `@inspatch/shared` and `@inspatch/server` to npm, creates a GitHub Release, and attaches the Chrome extension zip automatically.
+
+### Commit message conventions
+
+Use [Conventional Commits](https://www.conventionalcommits.org) — the changeset description is what appears in the changelog:
+
+| Prefix | When to use |
+|--------|-------------|
+| `feat` | New feature |
+| `fix` | Bug fix |
+| `chore` | Maintenance, deps, config |
