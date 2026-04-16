@@ -7,6 +7,6 @@
     "build": "cd packages/extension && bun run build",
     "server": "cd packages/server && bun run src/index.ts",
     "test": "bun test",
-    "lint": "echo 'lint configuration pending'",
+    "lint": "echo 'lint configuration pending'"
   }
 }
