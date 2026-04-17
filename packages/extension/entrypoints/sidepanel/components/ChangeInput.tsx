@@ -1,137 +1,236 @@
-import { useState, useCallback, useRef, type KeyboardEvent, type ClipboardEvent } from 'react'
-import { SendIcon } from './icons'
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type ChangeEvent,
+  type ClipboardEvent,
+  type KeyboardEvent,
+} from "react";
+import { PaperclipIcon, SendIcon, XIcon } from "./icons";
+
+interface Attachment {
+  id: string;
+  dataUrl: string;
+}
 
 interface ChangeInputProps {
-  onSend: (description: string, imageDataUrl?: string) => void
-  disabled?: boolean
+  onSend: (description: string, imageDataUrl?: string) => void;
+  disabled?: boolean;
 }
 
-function readImageFromClipboard(item: DataTransferItem): Promise<string> {
+const SUGGESTIONS: readonly string[] = [
+  "Tighten spacing",
+  "Make it look premium",
+  "Use the brand accent",
+  "Explain this component",
+  "Improve accessibility",
+];
+
+const MAX_HEIGHT = 160;
+
+function readImageFromFile(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
-    const blob = item.getAsFile()
-    if (!blob) return reject(new Error('No file in clipboard'))
-    const reader = new FileReader()
-    reader.onload = () => resolve(reader.result as string)
-    reader.onerror = () => reject(new Error('Failed to read image'))
-    reader.readAsDataURL(blob)
-  })
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result as string);
+    reader.onerror = () => reject(new Error("Failed to read image"));
+    reader.readAsDataURL(file);
+  });
 }
 
-const MAX_HEIGHT = 120
+export function ChangeInput({ onSend, disabled = false }: ChangeInputProps) {
+  const [value, setValue] = useState("");
+  const [attachments, setAttachments] = useState<Attachment[]>([]);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
-export function ChangeInput({ onSend, disabled }: ChangeInputProps) {
-  const [value, setValue] = useState('')
-  const [imageDataUrl, setImageDataUrl] = useState<string | null>(null)
-  const textareaRef = useRef<HTMLTextAreaElement>(null)
-
-  const trimmed = value.trim()
-  const canSend = (trimmed.length > 0 || !!imageDataUrl) && !disabled
+  const trimmed = value.trim();
+  const canSend = (trimmed.length > 0 || attachments.length > 0) && !disabled;
 
   const adjustHeight = useCallback(() => {
-    const el = textareaRef.current
-    if (!el) return
-    el.style.height = 'auto'
-    const next = Math.min(el.scrollHeight, MAX_HEIGHT)
-    el.style.height = `${next}px`
-    // only show scrollbar when content exceeds max height
-    el.style.overflowY = el.scrollHeight > MAX_HEIGHT ? 'auto' : 'hidden'
-  }, [])
+    const el = textareaRef.current;
+    if (!el) return;
+    el.style.height = "auto";
+    const next = Math.min(el.scrollHeight, MAX_HEIGHT);
+    el.style.height = `${next}px`;
+    el.style.overflowY = el.scrollHeight > MAX_HEIGHT ? "auto" : "hidden";
+  }, []);
 
-  const handleChange = useCallback((e: React.ChangeEvent<HTMLTextAreaElement>) => {
-    setValue(e.target.value)
-    adjustHeight()
-  }, [adjustHeight])
+  useEffect(() => {
+    adjustHeight();
+  }, [adjustHeight, value]);
 
   const handleSend = useCallback(() => {
-    if (!canSend) return
-    onSend(trimmed || '(see attached screenshot)', imageDataUrl ?? undefined)
-    setValue('')
-    setImageDataUrl(null)
-    // reset height and hide scrollbar after clearing value
+    if (!canSend) return;
+    const first = attachments[0]?.dataUrl;
+    onSend(trimmed || "(see attached screenshot)", first);
+    setValue("");
+    setAttachments([]);
     requestAnimationFrame(() => {
-      const el = textareaRef.current
+      const el = textareaRef.current;
       if (el) {
-        el.style.height = 'auto'
-        el.style.overflowY = 'hidden'
+        el.style.height = "auto";
+        el.style.overflowY = "hidden";
       }
-    })
-  }, [canSend, trimmed, imageDataUrl, onSend])
+    });
+  }, [canSend, trimmed, attachments, onSend]);
 
   const handleKeyDown = useCallback(
     (e: KeyboardEvent<HTMLTextAreaElement>) => {
-      if (e.key === 'Enter' && !e.shiftKey) {
-        e.preventDefault()
-        handleSend()
+      if (e.key === "Enter" && !e.shiftKey) {
+        e.preventDefault();
+        handleSend();
       }
     },
     [handleSend],
-  )
+  );
 
-  const handlePaste = useCallback(async (e: ClipboardEvent<HTMLTextAreaElement>) => {
-    const items = e.clipboardData?.items
-    if (!items) return
-    for (const item of items) {
-      if (item.type.startsWith('image/')) {
-        e.preventDefault()
-        try {
-          const dataUrl = await readImageFromClipboard(item)
-          setImageDataUrl(dataUrl)
-        } catch { /* ignore read failures */ }
-        return
-      }
+  const addAttachmentFromFile = useCallback(async (file: File) => {
+    try {
+      const dataUrl = await readImageFromFile(file);
+      setAttachments((prev) => [...prev, { id: crypto.randomUUID(), dataUrl }]);
+    } catch {
+      // ignore read failures
     }
-  }, [])
+  }, []);
 
-  const removeImage = useCallback(() => setImageDataUrl(null), [])
+  const handlePaste = useCallback(
+    async (e: ClipboardEvent<HTMLTextAreaElement>) => {
+      const items = e.clipboardData?.items;
+      if (!items) return;
+      for (const item of items) {
+        if (item.type.startsWith("image/")) {
+          e.preventDefault();
+          const file = item.getAsFile();
+          if (file) await addAttachmentFromFile(file);
+          return;
+        }
+      }
+    },
+    [addAttachmentFromFile],
+  );
+
+  const removeAttachment = useCallback((id: string) => {
+    setAttachments((prev) => prev.filter((a) => a.id !== id));
+  }, []);
+
+  const handleFileInput = useCallback(
+    async (e: ChangeEvent<HTMLInputElement>) => {
+      const files = e.target.files;
+      if (!files) return;
+      for (const file of files) {
+        if (file.type.startsWith("image/")) await addAttachmentFromFile(file);
+      }
+      e.target.value = "";
+    },
+    [addAttachmentFromFile],
+  );
+
+  const applySuggestion = useCallback((text: string) => {
+    setValue(text);
+    requestAnimationFrame(() => {
+      const el = textareaRef.current;
+      if (!el) return;
+      el.focus();
+      const end = el.value.length;
+      el.setSelectionRange(end, end);
+    });
+  }, []);
 
   return (
-    <div className="border-t border-ip-border-subtle px-3 pt-2 pb-3 bg-ip-bg-secondary animate-slide-up">
-      {imageDataUrl && (
-        <div className="relative mb-2 inline-block animate-fade-in-scale">
-          <img
-            src={imageDataUrl}
-            alt="Pasted screenshot"
-            className="max-h-28 rounded-ip-md border border-ip-border-subtle object-contain"
-          />
-          <button
-            onClick={removeImage}
-            aria-label="Remove image"
-            className="absolute -top-1.5 -right-1.5 w-5 h-5 flex items-center justify-center bg-ip-bg-tertiary hover:bg-ip-text-muted text-white text-xs rounded-full leading-none"
-            title="Remove image"
-          >
-            &times;
-          </button>
-        </div>
-      )}
-      <div className="flex items-end gap-2">
-        <textarea
-          ref={textareaRef}
-          value={value}
-          onChange={handleChange}
-          onKeyDown={handleKeyDown}
-          onPaste={handlePaste}
-          disabled={disabled}
-          rows={2}
-          placeholder={'Describe the change… (⌘V to paste screenshot)'}
-          className="flex-1 resize-none rounded-ip-md border border-ip-border-subtle bg-ip-bg-input px-3 py-2 text-[13px] text-ip-text-primary focus:outline-none focus:ring-2 focus:ring-[rgba(99,102,241,0.2)] focus:border-ip-border-accent placeholder:text-ip-text-muted disabled:opacity-50 disabled:cursor-not-allowed leading-5"
-          style={{ minHeight: '52px', maxHeight: `${MAX_HEIGHT}px`, overflowY: 'hidden' }}
-        />
+    <div className="animate-slide-up border-t border-ip-border-subtle bg-ip-bg-secondary px-3 py-2">
+      <div
+        className={`flex items-end gap-2 rounded-ip-md border bg-ip-bg-input px-2 py-1.5 transition-colors ${
+          disabled
+            ? "border-ip-border-subtle opacity-60"
+            : "border-ip-border-subtle focus-within:border-ip-border-accent"
+        }`}
+      >
         <button
+          type="button"
+          onClick={() => fileInputRef.current?.click()}
+          disabled={disabled}
+          aria-label="Attach screenshot"
+          title="Attach screenshot"
+          className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-ip-sm text-ip-text-muted transition-colors hover:bg-ip-bg-tertiary/50 hover:text-ip-text-accent active:scale-95 disabled:cursor-not-allowed disabled:opacity-40"
+        >
+          <PaperclipIcon size={14} />
+        </button>
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="image/*"
+          multiple
+          className="hidden"
+          onChange={handleFileInput}
+        />
+
+        <div className="flex min-w-0 flex-1 flex-wrap items-end gap-1.5 py-0.5">
+          {attachments.map((a) => (
+            <div key={a.id} className="group relative flex-shrink-0 animate-fade-in-scale">
+              <img
+                src={a.dataUrl}
+                alt="Attachment"
+                className="h-8 w-8 rounded-ip-sm border border-ip-border-subtle object-cover"
+              />
+              <button
+                type="button"
+                onClick={() => removeAttachment(a.id)}
+                aria-label="Remove attachment"
+                className="absolute -right-1 -top-1 flex h-3.5 w-3.5 items-center justify-center rounded-full bg-ip-bg-tertiary text-[9px] leading-none text-ip-text-primary opacity-0 transition-opacity group-hover:opacity-100 focus:opacity-100"
+              >
+                <XIcon size={10} />
+              </button>
+            </div>
+          ))}
+
+          <textarea
+            ref={textareaRef}
+            value={value}
+            onChange={(e) => setValue(e.target.value)}
+            onKeyDown={handleKeyDown}
+            onPaste={handlePaste}
+            disabled={disabled}
+            rows={1}
+            placeholder="Describe the change… (⌘V to paste screenshot)"
+            className="min-w-[120px] flex-1 resize-none bg-transparent text-[13px] leading-5 text-ip-text-primary placeholder:text-ip-text-muted focus:outline-none disabled:cursor-not-allowed"
+            style={{ maxHeight: `${MAX_HEIGHT}px`, overflowY: "hidden" }}
+          />
+        </div>
+
+        <button
+          type="button"
           onClick={handleSend}
           disabled={!canSend}
+          aria-label="Send"
           title="Send (Enter)"
-          className={`w-9 h-9 flex items-center justify-center rounded-ip-md flex-shrink-0 transition-all duration-150 ${
+          className={`flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-ip-sm transition-all duration-150 ${
             canSend
-              ? 'bg-linear-[135deg] from-ip-gradient-start to-ip-gradient-end hover:brightness-110 hover:scale-105 active:scale-95 text-white shadow-ip-card'
-              : 'opacity-40 bg-ip-bg-tertiary text-ip-text-muted cursor-not-allowed'
+              ? "bg-linear-[135deg] from-ip-gradient-start to-ip-gradient-end text-white hover:brightness-110 hover:shadow-ip-glow-accent active:scale-95"
+              : "cursor-not-allowed bg-ip-bg-tertiary text-ip-text-muted opacity-40"
           }`}
         >
-          <SendIcon className="w-4 h-4" />
+          <SendIcon size={13} />
         </button>
       </div>
-      <p className="text-[10px] text-ip-text-muted/50 mt-1.5 text-center select-none">
+
+      <div className="-mx-1 mt-1.5 flex items-center gap-1.5 overflow-x-auto px-1 pb-0.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+        {SUGGESTIONS.map((text) => (
+          <button
+            key={text}
+            type="button"
+            onClick={() => applySuggestion(text)}
+            disabled={disabled}
+            className="h-6 flex-shrink-0 whitespace-nowrap rounded-full border border-ip-border-subtle bg-ip-bg-tertiary/40 px-2 text-[11px] text-ip-text-secondary transition-all duration-150 hover:border-ip-border-accent hover:bg-ip-bg-tertiary/70 hover:text-ip-text-primary active:scale-95 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            {text}
+          </button>
+        ))}
+      </div>
+
+      <p className="mt-1 select-none text-center text-[10px] text-ip-text-muted/50">
         ↵ Send · ⇧↵ New line
       </p>
     </div>
-  )
+  );
 }

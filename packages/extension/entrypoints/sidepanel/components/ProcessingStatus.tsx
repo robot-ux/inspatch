@@ -1,68 +1,239 @@
-import { useRef, useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
-import type { StatusUpdate, ChangeResult } from "@inspatch/shared";
+import type { ChangeResult, StatusUpdate } from "@inspatch/shared";
+import { mdComponents } from "./markdown";
 
-// Markdown component overrides matching the existing design system
-const mdComponents = {
-  p: ({ children }: { children?: React.ReactNode }) => (
-    <p className="text-[12px] text-ip-text-secondary leading-relaxed">{children}</p>
-  ),
-  strong: ({ children }: { children?: React.ReactNode }) => (
-    <strong className="font-semibold text-ip-text-primary">{children}</strong>
-  ),
-  em: ({ children }: { children?: React.ReactNode }) => (
-    <em className="italic text-ip-text-secondary">{children}</em>
-  ),
-  code: ({ children, className }: { children?: React.ReactNode; className?: string }) => {
-    // block code has a language className, inline does not
-    const isBlock = !!className
-    if (isBlock) {
-      return (
-        <code className="block font-code text-[11px] text-ip-text-secondary bg-ip-bg-primary rounded-[var(--ip-radius-sm)] p-2 mt-1 overflow-x-auto whitespace-pre">
-          {children}
-        </code>
-      )
+interface ProcessingStatusProps {
+  statusUpdate: StatusUpdate | null;
+  changeResult: ChangeResult | null;
+  streamedText: string;
+  statusLog: string[];
+  onRetry: () => void;
+  onOpenSource: (file: string, line?: number, column?: number) => void;
+}
+
+type StatusKey = StatusUpdate["status"];
+const STATUS_LABELS: Record<StatusKey, { label: string; tone: string }> = {
+  queued: { label: "Queued", tone: "text-ip-text-muted" },
+  analyzing: { label: "Analyzing", tone: "text-ip-info" },
+  locating: { label: "Locating files", tone: "text-ip-info" },
+  generating: { label: "Generating", tone: "text-ip-text-accent" },
+  applying: { label: "Applying changes", tone: "text-[#C084FC]" },
+  complete: { label: "Complete", tone: "text-ip-success" },
+  error: { label: "Error", tone: "text-ip-error" },
+};
+
+const ACTIVE_STATUSES: ReadonlySet<StatusKey> = new Set([
+  "queued",
+  "analyzing",
+  "locating",
+  "generating",
+  "applying",
+]);
+
+function guidanceFor(errorText: string | undefined): string {
+  if (!errorText) return "Check the server terminal for details. You can try again with a different description.";
+  if (errorText.includes("timed out")) return "Try a simpler change description, or increase the server timeout.";
+  if (errorText.includes("abort")) return "The request was cancelled. Try again when ready.";
+  return "Check the server terminal for details. You can try again with a different description.";
+}
+
+export function ProcessingStatus({
+  statusUpdate,
+  changeResult,
+  streamedText,
+  statusLog,
+  onRetry,
+  onOpenSource,
+}: ProcessingStatusProps) {
+  if (!statusUpdate && !changeResult) return null;
+
+  if (changeResult) {
+    return changeResult.success ? (
+      <SuccessCard result={changeResult} onOpenSource={onOpenSource} />
+    ) : (
+      <FailureCard result={changeResult} onRetry={onRetry} />
+    );
+  }
+
+  return <InFlightCard statusUpdate={statusUpdate!} streamedText={streamedText} statusLog={statusLog} />;
+}
+
+interface InFlightCardProps {
+  statusUpdate: StatusUpdate;
+  streamedText: string;
+  statusLog: string[];
+}
+
+function InFlightCard({ statusUpdate, streamedText, statusLog }: InFlightCardProps) {
+  const streamRef = useRef<HTMLDivElement>(null);
+  const [copied, setCopied] = useState(false);
+
+  useEffect(() => {
+    const el = streamRef.current;
+    if (el) el.scrollTop = el.scrollHeight;
+  }, [streamedText]);
+
+  useEffect(() => {
+    if (!copied) return;
+    const t = setTimeout(() => setCopied(false), 2000);
+    return () => clearTimeout(t);
+  }, [copied]);
+
+  const cfg = STATUS_LABELS[statusUpdate.status] ?? { label: statusUpdate.status, tone: "text-ip-text-muted" };
+  const isActive = ACTIVE_STATUSES.has(statusUpdate.status);
+
+  const copyStream = async () => {
+    try {
+      await navigator.clipboard.writeText(streamedText);
+      setCopied(true);
+    } catch {
+      // clipboard blocked — fail silently
     }
-    return (
-      <code className="font-code text-[11px] text-ip-text-accent bg-ip-bg-primary px-1 py-0.5 rounded">
-        {children}
-      </code>
-    )
-  },
-  pre: ({ children }: { children?: React.ReactNode }) => (
-    <pre className="mt-1">{children}</pre>
-  ),
-  ul: ({ children }: { children?: React.ReactNode }) => (
-    <ul className="space-y-0.5 pl-3 list-disc list-outside marker:text-ip-text-muted">{children}</ul>
-  ),
-  ol: ({ children }: { children?: React.ReactNode }) => (
-    <ol className="space-y-0.5 pl-3 list-decimal list-outside marker:text-ip-text-muted">{children}</ol>
-  ),
-  li: ({ children }: { children?: React.ReactNode }) => (
-    <li className="text-[12px] text-ip-text-secondary leading-relaxed">{children}</li>
-  ),
-  h1: ({ children }: { children?: React.ReactNode }) => (
-    <h1 className="text-[13px] font-semibold text-ip-text-primary">{children}</h1>
-  ),
-  h2: ({ children }: { children?: React.ReactNode }) => (
-    <h2 className="text-[13px] font-semibold text-ip-text-primary">{children}</h2>
-  ),
-  h3: ({ children }: { children?: React.ReactNode }) => (
-    <h3 className="text-[12px] font-semibold text-ip-text-primary">{children}</h3>
-  ),
+  };
+
+  return (
+    <div className="relative space-y-2 overflow-hidden rounded-ip-lg border border-[rgba(163,166,255,0.30)] bg-ip-info-muted p-4">
+      {isActive && <div className="pointer-events-none absolute inset-0 animate-shimmer" />}
+
+      <div className="relative flex items-center gap-2">
+        {isActive && (
+          <div className="h-3 w-3 animate-spin rounded-full border-2 border-ip-gradient-start border-t-transparent" />
+        )}
+        <span className={`text-[13px] font-semibold transition-colors duration-300 ${cfg.tone}`}>
+          {cfg.label}
+        </span>
+      </div>
+
+      {statusLog.length > 0 ? (
+        <OperationLog entries={statusLog} />
+      ) : (
+        <p className="relative text-[12px] text-ip-text-secondary">{statusUpdate.message}</p>
+      )}
+
+      {streamedText && (
+        <div className="group relative">
+          <button
+            type="button"
+            onClick={copyStream}
+            className="absolute right-2 top-2 z-10 rounded-ip-sm bg-ip-bg-tertiary px-2 py-0.5 text-[11px] font-semibold text-ip-text-secondary opacity-0 transition-opacity hover:text-ip-text-primary group-hover:opacity-100"
+          >
+            {copied ? "Copied" : "Copy"}
+          </button>
+          <div
+            ref={streamRef}
+            className="max-h-32 space-y-1.5 overflow-y-auto rounded-ip-sm bg-ip-bg-primary p-2"
+          >
+            <ReactMarkdown components={mdComponents}>{streamedText}</ReactMarkdown>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+interface SuccessCardProps {
+  result: ChangeResult;
+  onOpenSource: (file: string, line?: number, column?: number) => void;
+}
+
+function SuccessCard({ result, onOpenSource }: SuccessCardProps) {
+  const [copied, setCopied] = useState(false);
+
+  useEffect(() => {
+    if (!copied) return;
+    const t = setTimeout(() => setCopied(false), 2000);
+    return () => clearTimeout(t);
+  }, [copied]);
+
+  const copyDiff = async () => {
+    if (!result.diff) return;
+    try {
+      await navigator.clipboard.writeText(result.diff);
+      setCopied(true);
+    } catch {
+      // ignore
+    }
+  };
+
+  return (
+    <div className="animate-fade-in-scale space-y-2 rounded-ip-lg border border-[rgba(197,255,201,0.30)] bg-ip-success-muted p-4">
+      {result.summary ? (
+        <ReactMarkdown components={mdComponents}>{result.summary}</ReactMarkdown>
+      ) : (
+        <span className="text-[13px] font-semibold text-ip-success">Changes applied</span>
+      )}
+
+      {result.filesModified && result.filesModified.length > 0 && (
+        <div className="space-y-1">
+          {result.filesModified.map((file) => (
+            <button
+              key={file}
+              type="button"
+              onClick={() => onOpenSource(file)}
+              className="block w-full truncate text-left font-code text-[12px] text-ip-success transition-colors hover:text-ip-success/80 hover:underline"
+              title={`${file} — click to open in editor`}
+            >
+              {file}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {result.diff && (
+        <div className="group relative mt-2">
+          <button
+            type="button"
+            onClick={copyDiff}
+            className="absolute right-2 top-2 z-10 rounded-ip-sm bg-ip-bg-tertiary px-2 py-0.5 text-[11px] font-semibold text-ip-text-secondary opacity-0 transition-opacity hover:text-ip-text-primary group-hover:opacity-100 active:scale-95"
+          >
+            {copied ? "Copied" : "Copy"}
+          </button>
+          <DiffBlock diff={result.diff} />
+        </div>
+      )}
+    </div>
+  );
+}
+
+interface FailureCardProps {
+  result: ChangeResult;
+  onRetry: () => void;
+}
+
+function FailureCard({ result, onRetry }: FailureCardProps) {
+  return (
+    <div className="animate-fade-in-scale space-y-2 rounded-ip-lg border border-[rgba(255,110,132,0.30)] bg-ip-error-muted p-4">
+      <span className="block text-[13px] font-semibold text-ip-error">Failed</span>
+      {result.error && (
+        <div className="space-y-1">
+          <p className="text-[12px] text-ip-error/80">{result.error}</p>
+          <p className="text-[11px] text-ip-text-muted">{guidanceFor(result.error)}</p>
+        </div>
+      )}
+      <button
+        type="button"
+        onClick={onRetry}
+        className="rounded-ip-sm bg-ip-error px-3 py-1 text-[11px] font-semibold text-white transition-all duration-150 hover:brightness-110 active:scale-95"
+      >
+        Try Again
+      </button>
+    </div>
+  );
 }
 
 function OperationLog({ entries }: { entries: string[] }) {
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
-    if (ref.current) ref.current.scrollTop = ref.current.scrollHeight;
+    const el = ref.current;
+    if (el) el.scrollTop = el.scrollHeight;
   }, [entries]);
   return (
-    <div ref={ref} className="max-h-20 overflow-y-auto space-y-0.5">
+    <div ref={ref} className="relative max-h-20 space-y-0.5 overflow-y-auto">
       {entries.map((entry, i) => (
         <p
-          key={i}
-          className={`text-[11px] font-code truncate ${
+          key={`${i}-${entry}`}
+          className={`truncate font-code text-[11px] ${
             i === entries.length - 1 ? "text-ip-text-secondary" : "text-ip-text-muted"
           }`}
         >
@@ -73,175 +244,24 @@ function OperationLog({ entries }: { entries: string[] }) {
   );
 }
 
-const statusLabels: Record<string, { label: string; color: string }> = {
-  queued: { label: "Queued", color: "text-ip-text-muted" },
-  analyzing: { label: "Analyzing", color: "text-ip-info" },
-  locating: { label: "Locating files", color: "text-ip-info" },
-  generating: { label: "Generating", color: "text-ip-text-accent" },
-  applying: { label: "Applying changes", color: "text-[#C084FC]" },
-  complete: { label: "Complete", color: "text-ip-success" },
-  error: { label: "Error", color: "text-ip-error" },
-};
-
-function DiffBlock({ diff, onCopy, isCopied }: { diff: string; onCopy: () => void; isCopied: boolean }) {
-  const lines = diff.split('\n');
+function DiffBlock({ diff }: { diff: string }) {
+  const lines = diff.split("\n");
   return (
-    <div className="relative group mt-2">
-      <button
-        onClick={onCopy}
-        className="absolute top-2 right-2 px-2 py-0.5 text-[11px] font-semibold bg-ip-bg-tertiary text-ip-text-secondary rounded-[var(--ip-radius-sm)] opacity-0 group-hover:opacity-100 transition-opacity hover:text-ip-text-primary z-10"
-      >
-        {isCopied ? 'Copied' : 'Copy'}
-      </button>
-      <div className="text-[11px] font-code bg-ip-bg-primary rounded-[var(--ip-radius-sm)] p-2 max-h-48 overflow-y-auto">
-        {lines.map((line, i) => {
-          let colorClass = 'text-ip-text-muted';
-          if (line.startsWith('+')) colorClass = 'text-ip-success';
-          else if (line.startsWith('-')) colorClass = 'text-ip-error';
-          else if (line.startsWith('@@')) colorClass = 'text-ip-info';
-          return (
-            <div key={i} className="flex whitespace-pre-wrap">
-              <span className="text-ip-text-muted select-none w-8 text-right pr-2 shrink-0">{i + 1}</span>
-              <span className={colorClass}>{line || ' '}</span>
-            </div>
-          );
-        })}
-      </div>
+    <div className="max-h-48 overflow-y-auto rounded-ip-sm bg-ip-bg-primary p-2 font-code text-[11px]">
+      {lines.map((line, i) => {
+        let tone = "text-ip-text-muted";
+        if (line.startsWith("+")) tone = "text-ip-success";
+        else if (line.startsWith("-")) tone = "text-ip-error";
+        else if (line.startsWith("@@")) tone = "text-ip-info";
+        return (
+          <div key={i} className="flex whitespace-pre-wrap">
+            <span className="w-8 shrink-0 select-none pr-2 text-right text-ip-text-muted">
+              {i + 1}
+            </span>
+            <span className={tone}>{line || " "}</span>
+          </div>
+        );
+      })}
     </div>
   );
-}
-
-interface ProcessingStatusProps {
-  statusUpdate: StatusUpdate | null;
-  changeResult: ChangeResult | null;
-  streamedText: string;
-  statusLog?: string[];
-  onRetry?: () => void;
-}
-
-export function ProcessingStatus({ statusUpdate, changeResult, streamedText, statusLog, onRetry }: ProcessingStatusProps) {
-  const textRef = useRef<HTMLDivElement>(null);
-  const [copied, setCopied] = useState<string | null>(null);
-
-  const copyToClipboard = (text: string, id: string) => {
-    navigator.clipboard.writeText(text);
-    setCopied(id);
-    setTimeout(() => setCopied(null), 2000);
-  };
-
-  useEffect(() => {
-    if (textRef.current) {
-      textRef.current.scrollTop = textRef.current.scrollHeight;
-    }
-  }, [streamedText]);
-
-  if (!statusUpdate && !changeResult) return null;
-
-  if (changeResult) {
-    if (changeResult.success) {
-      return (
-        <div className="rounded-ip-lg border p-4 space-y-2 animate-fade-in-scale border-[rgba(34,197,94,0.3)] bg-ip-success-muted">
-          {changeResult.summary ? (
-            <div className="space-y-1.5">
-              <ReactMarkdown components={mdComponents}>{changeResult.summary}</ReactMarkdown>
-            </div>
-          ) : (
-            <span className="text-[13px] font-semibold text-ip-success">Changes applied</span>
-          )}
-
-          {changeResult.filesModified && changeResult.filesModified.length > 0 && (
-            <div className="space-y-1">
-              {changeResult.filesModified.map((file) => (
-                <p key={file} className="text-[12px] font-code text-ip-success">{file}</p>
-              ))}
-            </div>
-          )}
-
-          {changeResult.diff && (
-            <DiffBlock
-              diff={changeResult.diff}
-              onCopy={() => copyToClipboard(changeResult.diff!, 'diff')}
-              isCopied={copied === 'diff'}
-            />
-          )}
-        </div>
-      );
-    }
-
-    return (
-      <div className="rounded-ip-lg border p-4 space-y-2 animate-fade-in-scale border-[rgba(239,68,68,0.3)] bg-ip-error-muted">
-        <div className="flex items-center gap-2">
-          <span className="text-[13px] font-semibold text-ip-error">Failed</span>
-        </div>
-
-        {changeResult.error && (
-          <div className="space-y-1">
-            <p className="text-[12px] text-ip-error/80">{changeResult.error}</p>
-            <p className="text-[11px] text-ip-text-muted">
-              {changeResult.error.includes("timed out")
-                ? "Try a simpler change description, or increase the server timeout."
-                : changeResult.error.includes("abort")
-                ? "The request was cancelled. Try again when ready."
-                : "Check the server terminal for details. You can try again with a different description."}
-            </p>
-          </div>
-        )}
-
-        {!changeResult.success && onRetry && (
-          <button
-            onClick={onRetry}
-            className="px-3 py-1 bg-ip-error hover:bg-ip-error/90 text-white text-[11px] font-semibold rounded-[var(--ip-radius-sm)] transition-colors"
-          >
-            Try Again
-          </button>
-        )}
-      </div>
-    );
-  }
-
-  if (statusUpdate) {
-    const config = statusLabels[statusUpdate.status] ?? { label: statusUpdate.status, color: "text-ip-text-muted" };
-    const isActive = statusUpdate.status !== "complete" && statusUpdate.status !== "error";
-
-    return (
-      <div className="rounded-ip-lg border border-[rgba(59,130,246,0.3)] bg-ip-info-muted p-4 space-y-2 relative overflow-hidden">
-        {isActive && (
-          <div className="absolute inset-0 animate-shimmer pointer-events-none" />
-        )}
-        <div className="flex items-center gap-2">
-          {isActive && (
-            <div className="w-3 h-3 border-2 border-ip-gradient-start border-t-transparent rounded-full animate-spin" />
-          )}
-          <span className={`text-[13px] font-semibold transition-colors duration-300 ${config.color}`}>
-            {config.label}
-          </span>
-        </div>
-
-        {statusLog && statusLog.length > 0 ? (
-          <OperationLog entries={statusLog} />
-        ) : (
-          <p className="text-[12px] text-ip-text-secondary">{statusUpdate.message}</p>
-        )}
-
-        {streamedText && (
-          <div className="relative group">
-            <button
-              onClick={() => copyToClipboard(streamedText, 'stream')}
-              className="absolute top-2 right-2 px-2 py-0.5 text-[11px] font-semibold bg-ip-bg-tertiary text-ip-text-secondary rounded-[var(--ip-radius-sm)] opacity-0 group-hover:opacity-100 transition-opacity hover:text-ip-text-primary z-10"
-            >
-              {copied === 'stream' ? 'Copied' : 'Copy'}
-            </button>
-            <div
-              ref={textRef}
-              className="bg-ip-bg-primary rounded-[var(--ip-radius-sm)] p-2 max-h-32 overflow-y-auto space-y-1.5"
-            >
-              <ReactMarkdown components={mdComponents}>{streamedText}</ReactMarkdown>
-            </div>
-          </div>
-        )}
-      </div>
-    );
-  }
-
-  return null;
 }

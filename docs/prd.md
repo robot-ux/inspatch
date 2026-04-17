@@ -1,0 +1,322 @@
+# Product Requirements Document
+
+## Overview
+
+- **Feature / Product:** Inspatch — a local developer tool that lets you "click a UI element on localhost and have Claude edit the source code"
+- **Author:** Inspatch core team
+- **Date:** 2026-04-17
+- **Version:** v0.1.4 (currently published on npm as `@inspatch/server`)
+- **Related docs:**
+  - UI: [./ui.md](./ui.md)
+  - Frontend: [./fe.md](./fe.md)
+  - API: [./api.md](./api.md)
+  - QA: [./qa.md](./qa.md)
+
+## Problem Statement
+
+During frontend development, the loop of "see something to change in the UI → locate the source → find the component/style → edit it" is long and lossy:
+
+- What you see in the browser has no direct mapping to source files. DevTools only exposes compiled DOM/CSS, not the originating React component file.
+- Even with AI coding tools (Claude Code, Cursor), users must manually translate "that button I want to change" into text (component name, location, context) — slow and error-prone.
+- Visual signals (screenshots, computed styles, bounding boxes) are hard to hand to an AI without loss, so users often need multiple rounds of clarification before the AI understands the target.
+
+**Target users:** Frontend engineers working on React apps served from `localhost`, who already have the Claude Code CLI installed and use AI-assisted coding regularly.
+
+**Impact if we don't solve it:** AI coding efficiency is throttled by the cost of describing "which element" rather than the actual change. Visually-driven tweaks (color, spacing, copy) can't be closed in the browser — users are forced back to the editor to locate source by hand.
+
+## Goals
+
+### Success criteria
+
+- Users can **click any element on localhost**, type a sentence in natural language, and have the change applied to source without leaving the browser.
+- Claude locates the right component file and applies the requested change **in a single request** with a hit rate ≥ 85%.
+- End-to-end latency from "Send" to "git diff returned" is P50 ≤ 30s, P95 ≤ 90s.
+- The request queue survives reconnects and exposes the last 24h of results.
+
+### Metrics
+
+| Metric | Target |
+| ------ | ------ |
+| Single-shot hit rate (no manual follow-up) | ≥ 85% |
+| End-to-end latency P50 / P95 | ≤ 30s / ≤ 90s |
+| Weekly active users (WAU) | 500 within 3 months of launch |
+| `@inspatch/server` monthly npm downloads | 2,000 within 3 months of launch |
+| Error rate (Claude failures + connection failures) | ≤ 5% |
+
+## Non-Goals
+
+- **No production websites.** Scope is strictly `localhost` development — never deployed sites.
+- **No cloud proxy.** Claude Agent SDK runs on the user's machine; source code and API keys never leave it.
+- **No multi-user collaboration.** Single-user, single-machine only; no team sharing or real-time co-editing.
+- **No component detection for non-React frameworks.** v1 relies on React Fiber for `componentName` and source position. Vue / Svelte / Angular are out of scope.
+- **No rich chat UI.** The side panel is a "describe → send → view result" surface, not a general chatbox.
+- **Not an IDE replacement.** Inspatch targets visually-driven micro-edits. Large refactors should still go through the Claude Code CLI directly.
+
+## User Stories
+
+### Story 1: Developer can modify a selected UI element with natural language
+
+**As a** frontend developer debugging a React app locally
+**I want to** click an element in the browser and type "make this button red and rounded"
+**So that** I don't have to switch to the editor to locate source — Claude edits the file directly
+
+**Acceptance criteria:**
+
+- [ ] Given a React component rendered on localhost, when I click Inspatch's Inspect button and select the element, the side panel displays its `componentName` and `sourceFile`.
+- [ ] Given a selected element, when I type a description and click Send, the server logs show a `change_request` received and enqueued.
+- [ ] Given Claude finishes processing, when I return to the side panel, I see the `change_result` with a git diff and the list of modified files.
+
+### Story 2: Developer can attach a screenshot for visual reference
+
+**As a** developer making precise visual tweaks (color, spacing, alignment)
+**I want to** paste or attach a screenshot of the current page, see it as a thumbnail preview inside the input, and send it alongside my description
+**So that** Claude has a visual anchor alongside my description, reducing ambiguity
+
+**Acceptance criteria:**
+
+- [ ] Given a selected element, when I paste an image or click the attach-screenshot affordance, a thumbnail chip appears inside the input with a remove `×`.
+- [ ] The request sent to the server includes `screenshotDataUrl`, and Claude's prompt references it.
+- [ ] The thumbnail chip has a max dimension and never pushes the Send button off-row.
+
+### Story 3: Developer can see live progress during a request
+
+**As a** developer waiting on a Claude-driven edit
+**I want to** see a status stream "queued → analyzing → locating → generating → applying → complete"
+**So that** I know what step is in flight, can estimate time left, and avoid double-sending
+
+**Acceptance criteria:**
+
+- [ ] The server pushes `status_update` messages as a stream.
+- [ ] The side panel renders each state with a visible indicator (progress bar or label).
+- [ ] If Claude emits streaming text, `streamText` is rendered incrementally.
+
+### Story 4: Developer can jump from a result straight to the source file
+
+**As a** developer who wants to verify or continue editing after Claude's change
+**I want to** click a filename in the result and open it at the right line in my editor
+**So that** I can continue fine-tuning or code review without hunting
+
+**Acceptance criteria:**
+
+- [ ] Each entry in `filesModified` is clickable in the side panel.
+- [ ] Clicking triggers `POST /open-in-editor`; the server opens the file at the target line using the editor it auto-detected at startup.
+- [ ] The side panel never asks the user to choose an editor — detection is a server concern; `--editor cursor|vscode` CLI flag remains the only manual override.
+
+### Story 5: Developer can recover recent results after a reconnect
+
+**As a** developer on a flaky network, or one who accidentally closed the side panel
+**I want to** see results from recently-completed requests when the extension reconnects
+**So that** I don't lose Claude's changes or their diffs
+
+**Acceptance criteria:**
+
+- [ ] On reconnect, the extension sends `resume_request`; the server returns results cached within the last 24h.
+- [ ] In-flight requests continue processing — they are not dropped because the extension reconnected.
+
+### Story 6: Developer is told clearly when Inspatch can't run on the current tab
+
+**As a** developer who opened the Inspatch side panel while on a non-localhost tab (e.g. a production site, docs, GitHub)
+**I want to** see a clear, friendly blocked state explaining "Inspatch only works on localhost" with the current URL surfaced
+**So that** I don't waste time clicking Inspect expecting it to work
+
+**Acceptance criteria:**
+
+- [ ] When the active tab's URL host is not `localhost` / `127.0.0.1` / `*.local`, the side panel body renders a dedicated blocked state — not the onboarding or empty state.
+- [ ] The blocked state shows the current URL (monospaced), a single-line explanation, and a primary action `Open localhost:3000` (or the last-known localhost URL) plus a secondary link to the docs.
+- [ ] The header's connection chip degrades to a neutral "not applicable" treatment — no red/yellow error state, since the server health is irrelevant on this tab.
+- [ ] Switching to a localhost tab restores the normal surface within one tick.
+
+## Information Architecture
+
+```
+<Inspatch Chrome Extension>
+├── <Side Panel Main>          # connection status, Inspect toggle, selected-element card, input + Send, request history
+│   ├── <Blocked — Non-localhost>  # shown when the active tab isn't a supported localhost URL
+│   └── <Result Detail>        # expanded view of a single request: status timeline, streamed text, git diff, filesModified list
+└── <Inspect Overlay>          # injected into the inspected page: hover highlight rect + size + component-name tooltip
+```
+
+Non-UI surfaces (out of the IA but part of the product):
+
+- `@inspatch/server` CLI — launched via `npx @inspatch/server <dir>`.
+- Local HTTP endpoints — `GET /health`, `POST /open-in-editor`.
+- Local WebSocket — `ws://127.0.0.1:9377` (protocol defined by Zod schemas in `packages/shared`).
+
+## User Flows
+
+### Flow: Story 1 — Modify a selected element
+
+```
+Side Panel Main → click Inspect → Inspect Overlay (hover → click element)
+→ Side Panel Main (selected-element card populated)
+→ type description → Send → status stream → Result Detail (git diff rendered)
+```
+
+### Flow: Story 2 — Attach a screenshot
+
+```
+Side Panel Main (element already selected) → toggle "Attach screenshot"
+→ Inspect Overlay captures viewport → Side Panel Main (preview thumbnail)
+→ Send → Result Detail
+```
+
+### Flow: Story 3 — Watch live progress
+
+```
+Side Panel Main (Send) → status badge: queued → analyzing → locating → generating → applying
+→ Result Detail auto-expands on complete → git diff visible
+```
+
+### Flow: Story 4 — Open a modified file in the editor
+
+```
+Result Detail → click filename in filesModified
+→ POST /open-in-editor → editor (Cursor / VS Code) opens file at target line
+```
+
+### Flow: Story 5 — Recover results after reconnect
+
+```
+Extension reconnects → WebSocket open → send resume_request
+→ Side Panel Main request history repopulated with last 24h → Result Detail available for each
+```
+
+### Flow: Story 6 — Non-localhost tab
+
+```
+User opens side panel on https://example.com
+→ Side Panel Main evaluates active tab URL → renders Blocked — Non-localhost state
+→ user switches to http://localhost:3000 → panel re-evaluates → normal Side Panel Main
+```
+
+## Screens
+
+> Index only. Full per-screen detail lives in [./ui.md](./ui.md).
+
+| Screen | Purpose | Primary actions | Detail |
+| ------ | ------- | --------------- | ------ |
+| side-panel-main | Connection status, Inspect entry, selected-element card, description input, request history | Toggle Inspect, type + Send, open result, cancel in-flight | → [./ui.md#side-panel-main](./ui.md) |
+| non-localhost-blocked | State of side-panel-main shown when the active tab isn't a supported localhost URL; includes a first-time `welcome` variant that introduces the product before the blocked explanation | Navigate to a localhost dev server, open docs | → [./ui.md#non-localhost-blocked](./ui.md) |
+| inspect-overlay | Visual targeting layer injected into the inspected page | Hover highlight, click-to-select, ESC to cancel | → [./ui.md#inspect-overlay](./ui.md) |
+| result-detail | Single-request result view: status timeline, streamed text, git diff, modified-files list | Expand/collapse, open file in editor, copy diff | → [./ui.md#result-detail](./ui.md) |
+
+Notable states of `side-panel-main` (one screen, many states — see the State Matrix below for the full 8-state grid):
+
+- **welcome (first-run)** — connected, Inspect never used; shows the 01/02/03 onboarding steps + `Start Inspect` CTA.
+- **disconnected** — WS not connected; shows `StatusGuide` explaining how to start `@inspatch/server`.
+- **connected-idle** — after first use, no element selected; shows the idle `EmptyState`.
+- **element-selected** — `ElementCard` + `ChangeInput` ready for a description.
+- **processing** — in-flight request; shows the processing card with status stream.
+- **result-success / result-failure** — terminal states after `change_result` lands (see `result-detail`).
+
+## Functional Requirements
+
+| ID    | Requirement | Screen(s) | Priority |
+| ----- | ----------- | --------- | -------- |
+| FR-01 | Chrome extension exposes an "Inspect mode": hover highlights the DOM, click selects the element and shows its info in the side panel | inspect-overlay, side-panel-main | P0 |
+| FR-02 | Extension captures `componentName`, `sourceFile`, `sourceLine`, `sourceColumn` via a React Fiber main-world script | inspect-overlay | P0 |
+| FR-03 | Extension collects `xpath`, `boundingRect`, `computedStyles`, optional `screenshotDataUrl`, optional `consoleErrors` | inspect-overlay | P0 |
+| FR-04 | Extension talks to the local server over `ws://127.0.0.1:9377`; all messages are validated by shared Zod v4 schemas | side-panel-main | P0 |
+| FR-05 | Server processes `change_request` sequentially via `RequestQueue`, streams `status_update`, returns a final `change_result` | side-panel-main, result-detail | P0 |
+| FR-06 | Server invokes `@anthropic-ai/claude-agent-sdk` with `permissionMode: "acceptEdits"` and tools limited to Read/Edit/Write/MultiEdit/Bash/Grep/Glob | n/a (server internal) | P0 |
+| FR-07 | After Claude completes, server runs `git diff` to collect changes and returns `diff` + `filesModified` in `change_result` | result-detail | P0 |
+| FR-08 | Server exposes `GET /health` (health check) and `POST /open-in-editor` (open file) HTTP endpoints | result-detail | P1 |
+| FR-09 | Server auto-detects the editor (Cursor / VS Code) at startup and uses it for every `open-in-editor` call; the side panel never exposes an editor picker. `--editor` CLI flag is the sole manual override | result-detail | P1 |
+| FR-10 | CLI accepts `-p/--project <dir>` (or positional `<dir>`), `--port`, `--editor`, `--timeout` | n/a (CLI) | P0 |
+| FR-11 | Request queue retains completed results for 24h; supports `resume_request` to replay history | side-panel-main | P1 |
+| FR-12 | Side panel shows request list, status progress, streamed text, and the final git diff | side-panel-main, result-detail | P0 |
+| FR-13 | Clicking a file in `filesModified` triggers `open-in-editor` and jumps to the target line | result-detail | P1 |
+| FR-14 | `@inspatch/server` publishes to npm via `bin/run.cjs`; `npx @inspatch/server ./my-app` is a one-command start | n/a (distribution) | P0 |
+| FR-15 | Extension ships as a zip on GitHub Releases, installable via Chrome's "Load unpacked" | n/a (distribution) | P0 |
+| FR-16 | Claude runner timeout (default 1800s) kills the run and returns an `error` status | side-panel-main | P1 |
+| FR-17 | All WebSocket schemas live in `packages/shared/src/schemas.ts` and are shared by both packages | n/a (shared protocol) | P0 |
+| FR-18 | On startup, if `--project` is missing, non-existent, or not a Git repo, the server fails with a clear message | n/a (CLI) | P1 |
+| FR-19 | Requests can include optional `consoleErrors` (recent page errors) to give Claude more context | inspect-overlay | P2 |
+| FR-20 | "Cancel current request" is supported (extension button + server-side interrupt of the Claude child process) | side-panel-main | P2 |
+| FR-21 | Side panel renders a dedicated `non-localhost-blocked` state whenever the active tab host is not `localhost` / `127.0.0.1` / `*.local`; surfaces the current URL, a primary "Open localhost:3000" action, and a docs link. First-time users (no prior `lastLocalhostUrl` in `chrome.storage.local`) see a `welcome` variant: a short "What is Inspatch?" lede above the blocked card, so the very first impression isn't a raw error surface | non-localhost-blocked | P0 |
+| FR-22 | Change-description input is a single row `[attachments] [auto-growing textarea] [Send]`; the textarea grows from 1 line up to a capped max height (≈ 160px), then scrolls internally. Pasted or attached screenshots appear as inline thumbnail chips with a remove `×` | side-panel-main | P0 |
+| FR-23 | Below the input, a horizontally-scrollable row of AI suggestion chips ("make this more prominent", "tighten spacing", "use brand accent", "explain this component", etc.) — click fills the textarea and focuses it. Chips are contextual to the selected element when possible, static fallback otherwise | side-panel-main | P1 |
+
+Priority: `P0` = must have, `P1` = should have, `P2` = nice to have.
+
+## State Matrix
+
+> One row per screen. ✓ = designed, ✗ = missing, n/a = does not apply.
+
+| Screen | Default | Empty | Loading | Error | Success | Offline | Blocked | Permission-denied |
+| ------ | ------- | ----- | ------- | ----- | ------- | ------- | ------- | ----------------- |
+| side-panel-main | ✓ (welcome = first-run onboarding; connected-idle = after first use) | ✓ (no history) | ✓ (connecting / in-flight request) | ✓ (WebSocket disconnected, Claude error) | ✓ (completed entries in history) | ✓ (disconnected: server not running → `StatusGuide`; reconnecting: chip pulses + banner) | ✓ (non-localhost URL — see `non-localhost-blocked` screen) | n/a |
+| non-localhost-blocked | ✓ (blocked card with remembered localhost URL) | ✓ (welcome variant: first-time open on a non-localhost tab — intro lede before the blocked card) | n/a | ✓ (`chrome.tabs` permission missing → fallback copy, no primary CTA) | n/a | n/a | ✓ (this screen *is* the blocked state) | n/a |
+| inspect-overlay | ✓ | n/a | n/a | ✓ (Fiber lookup failed → fallback to DOM info) | ✓ (element selected) | n/a | n/a | ✓ (host permission missing for current origin) |
+| result-detail | ✓ | ✓ (before first status_update) | ✓ (status stream in flight) | ✓ (error status + message) | ✓ (git diff + filesModified) | n/a | n/a | n/a |
+
+## Non-Functional Requirements
+
+- **Performance:**
+  - WebSocket message RTT (excluding Claude execution) ≤ 50ms on loopback.
+  - Inspect-mode hover highlighting has no perceptible lag (≥ 50fps).
+  - Server process resident memory ≤ 200MB (excluding Claude child processes).
+- **Security:**
+  - All listeners bind to `127.0.0.1` only; never exposed on a public interface.
+  - Extension host permissions limited to `http://localhost/*`, `http://127.0.0.1/*`, and explicitly-granted local domains.
+  - Server does not log source content; logs keep only file paths and length summaries.
+  - Claude Agent SDK runs with `permissionMode: "acceptEdits"` — edits allowed, arbitrary execution not (Bash tool is only used for git/search).
+  - No code, prompt, or diff content is sent to any third party.
+- **Reliability / Uptime:**
+  - Queue preserves request order; exceptions never lose a request; completed results are queryable for 24h.
+  - WebSocket auto-reconnects with exponential backoff; reconnect restores recent results.
+  - Claude runner exceptions (timeout, process exit) always return an explicit `error` state to the extension.
+- **Scalability:**
+  - Protocol uses Zod discriminated unions; new message types do not break old clients.
+  - Monorepo structure (Bun workspaces) keeps extension / server / shared independently releasable.
+- **Accessibility:**
+  - Side panel is keyboard-navigable with a correct tab order and visible focus rings.
+  - Color contrast meets WCAG AA.
+  - Status flow uses text + icon (not color alone) to convey state.
+
+## Technical Notes
+
+> Short sketch only. Full detail belongs in [./fe.md](./fe.md) and [./api.md](./api.md).
+
+- **Runtime / framework:** Bun runtime + strict TypeScript; extension built with WXT (Chrome MV3) + React 19 + Tailwind v4; server is native Bun HTTP + WebSocket.
+- **Key dependencies:** `@anthropic-ai/claude-agent-sdk` (local Claude invocation), WXT (extension build), Zod v4 (shared protocol), React 19.
+- **Key protocol / data flow:** Extension captures element context → sends `change_request` over `ws://127.0.0.1:9377` → server `RequestQueue` serializes work → `claude-runner` calls the Agent SDK with tools limited to `Read/Edit/Write/MultiEdit/Bash/Grep/Glob` → server computes `git diff` → streams `status_update` and returns `change_result` to the extension.
+- **Detail:** see [./fe.md](./fe.md) and [./api.md](./api.md).
+
+## Open Questions
+
+| Question | Owner | Due |
+| -------- | ----- | --- |
+| Do we ship a Firefox / Safari version? v1 is Chrome-only — is that still the plan for v2? | Core team | 2026-05-15 |
+| Do we pursue Chrome Web Store distribution? Current sideload-zip path has a trust barrier. | Core team | 2026-05-15 |
+| How do we support component detection for Vue / Svelte / Solid? (Needs new main-world scripts.) | Core team | 2026-06-30 |
+| Do we introduce a "plan-and-execute" mode for multi-step edits within one request? | Core team | 2026-06-30 |
+| Do we need telemetry? How do we measure success rate while keeping the zero-upload promise? | Core team | 2026-05-30 |
+| Do we support non-Git projects? (Current result flow depends on `git diff`.) | Core team | 2026-05-30 |
+
+## Dependencies
+
+- **External:**
+  - Claude Code CLI installed and logged in (`claude` on PATH) — Claude Agent SDK delegates auth to the local CLI.
+  - Bun v1.0+ (auto-fetched by `npx @inspatch/server`).
+  - User's project is a Git repository (required for diff generation).
+- **Internal:**
+  - `@anthropic-ai/claude-agent-sdk` (upstream API changes must be mirrored).
+  - Chrome Manifest V3 surface stability (`chrome.debugger` / side panel API).
+  - WXT build pipeline.
+- **Cross-team:** none (single- or small-team project today).
+
+## Timeline
+
+| Milestone                 | Target date |
+| ------------------------- | ----------- |
+| PRD frozen                | 2026-04-20 |
+| UI doc complete           | 2026-04-24 |
+| Frontend / API doc complete | 2026-04-28 |
+| Dev complete (P1 items: FR-08, FR-09, FR-11, FR-13, FR-16, FR-18) | 2026-05-15 |
+| QA complete               | 2026-06-10 |
+| Launch (0.2.0 release)    | 2026-06-30 |
+
+---
+
+> **Note:** This PRD is inferred from the current codebase, README, and `CLAUDE.md`. Metrics (WAU / download targets) and forward-looking dates are reasonable estimates pending team confirmation.
