@@ -8,6 +8,7 @@ import {
   SERVER_VERSION,
   type EditorScheme,
 } from './server';
+import { printBanner } from './banner';
 
 const logger = createLogger('server');
 
@@ -124,12 +125,14 @@ const timeoutMs = getTimeout() * 1000;
 
 try {
   const server = createServer(port, projectDir, editor, timeoutMs);
-  logger.info(`Inspatch server v${SERVER_VERSION}`);
-  logger.info(`Project: ${projectDir}`);
-  logger.info(`Editor:  ${editor}`);
-  logger.info(`Timeout: ${timeoutMs / 1000}s`);
-  logger.info(`Listening on ws://127.0.0.1:${server.port}`);
-  logger.info('Press Ctrl+C to stop');
+  const boundPort = server.port ?? port;
+  printBanner({
+    version: SERVER_VERSION,
+    port: boundPort,
+    projectDir,
+    editor,
+  });
+  logger.info(`Listening on ws://127.0.0.1:${boundPort} (timeout ${timeoutMs / 1000}s, Ctrl+C to stop)`);
 } catch (err: unknown) {
   if (err instanceof Error && err.message.includes('EADDRINUSE')) {
     logger.error(`Port ${port} is already in use.`);

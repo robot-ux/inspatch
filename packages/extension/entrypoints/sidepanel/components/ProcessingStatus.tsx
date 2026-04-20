@@ -18,10 +18,19 @@ const STATUS_LABELS: Record<StatusKey, { label: string; tone: string }> = {
   analyzing: { label: "Analyzing", tone: "text-ip-info" },
   locating: { label: "Locating files", tone: "text-ip-info" },
   generating: { label: "Generating", tone: "text-ip-text-accent" },
-  applying: { label: "Applying changes", tone: "text-[#C084FC]" },
+  applying: { label: "Applying changes", tone: "text-ip-warning" },
   complete: { label: "Complete", tone: "text-ip-success" },
   error: { label: "Error", tone: "text-ip-error" },
 };
+
+const PROGRESS_STEPS: ReadonlyArray<StatusKey> = [
+  "queued",
+  "analyzing",
+  "locating",
+  "generating",
+  "applying",
+  "complete",
+];
 
 const ACTIVE_STATUSES: ReadonlySet<StatusKey> = new Set([
   "queued",
@@ -93,7 +102,7 @@ function InFlightCard({ statusUpdate, streamedText, statusLog }: InFlightCardPro
   };
 
   return (
-    <div className="relative space-y-2 overflow-hidden rounded-ip-lg border border-[rgba(163,166,255,0.30)] bg-ip-info-muted p-4">
+    <div className="relative space-y-2 overflow-hidden rounded-ip-lg border border-ip-text-accent/30 bg-ip-info-muted p-4">
       {isActive && <div className="pointer-events-none absolute inset-0 animate-shimmer" />}
 
       <div className="relative flex items-center gap-2">
@@ -104,6 +113,8 @@ function InFlightCard({ statusUpdate, streamedText, statusLog }: InFlightCardPro
           {cfg.label}
         </span>
       </div>
+
+      <ProgressBar status={statusUpdate.status} progress={statusUpdate.progress} />
 
       {statusLog.length > 0 ? (
         <OperationLog entries={statusLog} />
@@ -157,7 +168,7 @@ function SuccessCard({ result, onOpenSource }: SuccessCardProps) {
   };
 
   return (
-    <div className="animate-fade-in-scale space-y-2 rounded-ip-lg border border-[rgba(197,255,201,0.30)] bg-ip-success-muted p-4">
+    <div className="animate-fade-in-scale space-y-2 rounded-ip-lg border border-ip-success/30 bg-ip-success-muted p-4">
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0 flex-1">
           {result.summary ? (
@@ -169,7 +180,7 @@ function SuccessCard({ result, onOpenSource }: SuccessCardProps) {
         {result.diffMode === "snapshot" && (
           <span
             title="Diff computed by comparing pre-run snapshots (project isn't a Git repo)"
-            className="shrink-0 rounded-ip-sm border border-[rgba(163,166,255,0.40)] px-1.5 py-0.5 font-code text-[10px] uppercase tracking-wide text-ip-info"
+            className="shrink-0 rounded-ip-sm border border-ip-border-accent px-1.5 py-0.5 font-code text-[10px] uppercase tracking-wide text-ip-info"
           >
             snapshot diff
           </span>
@@ -215,7 +226,7 @@ interface FailureCardProps {
 
 function FailureCard({ result, onRetry }: FailureCardProps) {
   return (
-    <div className="animate-fade-in-scale space-y-2 rounded-ip-lg border border-[rgba(255,110,132,0.30)] bg-ip-error-muted p-4">
+    <div className="animate-fade-in-scale space-y-2 rounded-ip-lg border border-ip-error/30 bg-ip-error-muted p-4">
       <span className="block text-[13px] font-semibold text-ip-error">Failed</span>
       {result.error && (
         <div className="space-y-1">
@@ -230,6 +241,46 @@ function FailureCard({ result, onRetry }: FailureCardProps) {
       >
         Try Again
       </button>
+    </div>
+  );
+}
+
+interface ProgressBarProps {
+  status: StatusKey;
+  progress?: number;
+}
+
+function ProgressBar({ status, progress }: ProgressBarProps) {
+  const ix = PROGRESS_STEPS.indexOf(status);
+  const isError = status === "error";
+  return (
+    <div className="relative flex gap-[3px]">
+      {PROGRESS_STEPS.map((step, i) => {
+        const done = !isError && i < ix;
+        const current = !isError && i === ix;
+        const fill = current && typeof progress === "number" ? Math.max(4, Math.min(100, progress)) : 100;
+        return (
+          <div
+            key={step}
+            className={`relative h-[3px] flex-1 overflow-hidden rounded-full ${
+              done
+                ? "bg-ip-text-accent"
+                : current
+                  ? "bg-ip-bg-tertiary"
+                  : isError && i === 0
+                    ? "bg-ip-error"
+                    : "bg-ip-bg-tertiary"
+            }`}
+          >
+            {current && (
+              <div
+                className="h-full bg-linear-[90deg] from-ip-gradient-start to-ip-gradient-end transition-[width] duration-300"
+                style={{ width: `${fill}%` }}
+              />
+            )}
+          </div>
+        );
+      })}
     </div>
   );
 }

@@ -18,6 +18,18 @@ export const BoundingRectSchema = z.object({
 export const PageSourceSchema = z.enum(["localhost", "file"]);
 export type PageSource = z.infer<typeof PageSourceSchema>;
 
+// DOM ancestor captured at selection time. Enables clickable "Ancestors" UI
+// in the side panel (hover to highlight, click to re-select). componentName is
+// populated from the fiber owning that DOM node (nearest function-typed fiber).
+export const AncestorInfoSchema = z.object({
+  xpath: z.string(),
+  tagName: z.string(),
+  id: z.string().optional(),
+  classes: z.array(z.string()).optional(),
+  componentName: z.string().optional(),
+});
+export type AncestorInfo = z.infer<typeof AncestorInfoSchema>;
+
 export const ElementSelectionSchema = z.object({
   type: z.literal("element_selection"),
   tagName: z.string(),
@@ -26,7 +38,7 @@ export const ElementSelectionSchema = z.object({
   xpath: z.string(),
   boundingRect: BoundingRectSchema,
   componentName: z.string().optional(),
-  parentChain: z.array(z.string()).optional(),
+  ancestors: z.array(AncestorInfoSchema).optional(),
   sourceFile: z.string().optional(),
   sourceLine: z.number().optional(),
   sourceColumn: z.number().optional(),
@@ -55,7 +67,7 @@ export const ChangeRequestSchema = z.object({
   description: z.string().min(1),
   elementXpath: z.string(),
   componentName: z.string().optional(),
-  parentChain: z.array(z.string()).optional(),
+  ancestors: z.array(AncestorInfoSchema).optional(),
   sourceFile: z.string().optional(),
   sourceLine: z.number().optional(),
   sourceColumn: z.number().optional(),

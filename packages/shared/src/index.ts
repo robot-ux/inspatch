@@ -1,6 +1,7 @@
 export {
   ConnectionStatusSchema,
   ElementSelectionSchema,
+  AncestorInfoSchema,
   ConsoleErrorSchema,
   ChangeRequestSchema,
   ChangeModeSchema,
@@ -22,6 +23,7 @@ export {
 export type {
   ConnectionStatus,
   ElementSelection,
+  AncestorInfo,
   ConsoleError,
   ChangeRequest,
   ChangeMode,

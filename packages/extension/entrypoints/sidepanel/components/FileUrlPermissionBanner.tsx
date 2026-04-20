@@ -18,9 +18,9 @@ export function FileUrlPermissionBanner({ extensionId }: FileUrlPermissionBanner
   };
 
   return (
-    <div className="animate-slide-down border-b border-[rgba(193,128,255,0.30)] bg-ip-warning-muted px-4 py-3">
+    <div className="animate-slide-down border-b border-ip-warning/30 bg-ip-warning-muted px-4 py-3">
       <p className="text-[12px] font-medium text-ip-warning">
-        Inspatch needs “Allow access to file URLs” for local HTML files
+        Inspatch needs &ldquo;Allow access to file URLs&rdquo; for local HTML files
       </p>
       <ol className="mt-1.5 list-decimal space-y-0.5 pl-4 text-[11px] text-ip-warning">
         <li>Open the address below in Chrome</li>
@@ -28,13 +28,13 @@ export function FileUrlPermissionBanner({ extensionId }: FileUrlPermissionBanner
         <li>Reload the file:// tab</li>
       </ol>
       <div className="mt-2 flex items-center gap-2">
-        <code className="flex-1 truncate rounded-ip-sm bg-black/20 px-2 py-1 font-code text-[11px] text-ip-warning">
+        <code className="flex-1 truncate rounded-ip-sm bg-black/25 px-2 py-1 font-code text-[11px] text-ip-warning">
           {deepLink}
         </code>
         <button
           type="button"
           onClick={copy}
-          className="rounded-ip-sm border border-[rgba(193,128,255,0.40)] px-2 py-1 font-code text-[11px] text-ip-warning transition-colors hover:bg-[rgba(193,128,255,0.15)]"
+          className="rounded-ip-sm border border-ip-warning/40 px-2 py-1 font-code text-[11px] text-ip-warning transition-colors hover:bg-ip-warning-muted"
         >
           Copy
         </button>

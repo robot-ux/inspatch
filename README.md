@@ -1,6 +1,15 @@
-# Inspatch
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset=".github/assets/inspatch-mark-dark.svg">
+    <img alt="Inspatch" src=".github/assets/inspatch-mark-light.svg" width="64" height="64">
+  </picture>
+</p>
 
-Select any UI element on your local app, describe the change you want, and Claude edits the source code for you.
+<h1 align="center">Inspatch</h1>
+
+<p align="center">
+  Select any UI element on your local app, describe the change you want, and Claude edits the source code for you.
+</p>
 
 ## How it works
 

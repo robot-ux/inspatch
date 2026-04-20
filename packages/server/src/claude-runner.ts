@@ -62,8 +62,15 @@ function buildPromptText(req: ChangeRequest, approvedPlan?: string): string {
     lines.push(loc);
   }
 
-  if (req.parentChain?.length) {
-    lines.push(`- Parent chain: ${req.parentChain.join(" > ")}`);
+  if (req.ancestors?.length) {
+    const chain = req.ancestors
+      .map((a) => {
+        if (a.componentName) return `<${a.componentName}>`;
+        const idPart = a.id ? `#${a.id}` : "";
+        return `<${a.tagName}>${idPart}`;
+      })
+      .join(" > ");
+    lines.push(`- Parent chain: ${chain}`);
   }
 
   if (req.boundingRect) {

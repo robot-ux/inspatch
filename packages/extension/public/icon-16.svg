@@ -1,0 +1,14 @@
+<!-- Inspatch mark - 16px fallback (mono). Brand indigo cross loses contrast at 16px
+     on dark bg, so the favicon/toolbar-sized icon drops to pure white for legibility.
+     32/48/128 still use the brand palette from icon.svg. -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 240" width="240" height="240">
+  <rect width="240" height="240" fill="#0A0A0A"/>
+  <g stroke="#FAFAFA" stroke-width="20" stroke-linecap="square" fill="none">
+    <polyline points="34,72 34,34 72,34"/>
+    <polyline points="168,34 206,34 206,72"/>
+    <polyline points="34,168 34,206 72,206"/>
+    <polyline points="206,168 206,206 168,206"/>
+    <line x1="120" y1="86"  x2="120" y2="154"/>
+    <line x1="86"  y1="120" x2="154" y2="120"/>
+  </g>
+</svg>

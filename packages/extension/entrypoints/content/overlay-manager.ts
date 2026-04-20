@@ -17,11 +17,13 @@ const OVERLAY_STYLES = `
 .content-layer { background: rgba(100, 150, 255, 0.3); }
 .tooltip {
   position: absolute;
-  background: #232327;
-  color: #fff;
-  font: 11px/1.3 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
-  padding: 2px 6px;
+  background: #0e0e10;
+  color: #ededed;
+  font: 500 11px/1.3 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+  padding: 3px 7px;
   border-radius: 3px;
+  border: 1px solid rgba(96, 99, 238, 0.35);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
   white-space: nowrap;
   pointer-events: none;
 }

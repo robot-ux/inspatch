@@ -5,7 +5,7 @@
 - **Feature / Product:** Inspatch — a local developer tool that lets you "click a UI element on localhost **or a local HTML file** and have Claude edit the source code"
 - **Author:** Inspatch core team
 - **Date:** 2026-04-17
-- **Version:** v0.2.0 (planned — adds Quick/Discuss mode with plan approval; v0.1.4 currently published on npm as `@inspatch/server`)
+- **Version:** v0.2.0 (planned — adds Quick/Discuss mode with in-page plan-approval modal, an ancestor-element picker on the selected-element card, and removes the persistent request-history surface; v0.1.4 currently published on npm as `@inspatch/server`)
 - **Related docs:**
   - UI: [./ui.md](./ui.md)
   - Frontend: [./fe.md](./fe.md)
@@ -32,7 +32,7 @@ During frontend development, the loop of "see something to change in the UI → 
 - Users can **click any element on localhost or on a local `file://` HTML page**, type a sentence in natural language, and have the change applied to source without leaving the browser.
 - Claude locates the right component file and applies the requested change **in a single request** with a hit rate ≥ 85%.
 - End-to-end latency from "Send" to "git diff returned" is P50 ≤ 30s, P95 ≤ 90s.
-- The request queue survives reconnects and exposes the last 24h of results.
+- Reconnects cleanly re-attach to the in-flight request and any plan awaiting approval — no live edit is lost mid-flight.
 
 ### Metrics
 
@@ -53,6 +53,7 @@ During frontend development, the loop of "see something to change in the UI → 
 - **No component detection for non-React frameworks.** v1 relies on React Fiber for `componentName` and source position. Vue / Svelte / Angular are out of scope.
 - **No rich chat UI.** The side panel is a "describe → send → view result" surface, not a general chatbox.
 - **Not an IDE replacement.** Inspatch targets visually-driven micro-edits. Large refactors should still go through the Claude Code CLI directly.
+- **No persistent request history.** Delivered results are shown once and not retained — the user's git working tree / editor is the source of truth. Reconnects re-attach to live state only (in-flight request, pending plan), never replay past results.
 
 ## User Stories
 
@@ -104,16 +105,17 @@ During frontend development, the loop of "see something to change in the UI → 
 - [ ] Clicking triggers `POST /open-in-editor`; the server opens the file at the target line using the editor it auto-detected at startup.
 - [ ] The side panel never asks the user to choose an editor — detection is a server concern; `--editor cursor|vscode` CLI flag remains the only manual override.
 
-### Story 5: Developer can recover recent results after a reconnect
+### Story 5: Developer can re-attach to a live request after a reconnect
 
-**As a** developer on a flaky network, or one who accidentally closed the side panel
-**I want to** see results from recently-completed requests when the extension reconnects
-**So that** I don't lose Claude's changes or their diffs
+**As a** developer on a flaky network, or one who accidentally closed the side panel mid-request
+**I want to** resume the currently-running request (status stream, eventual result, or pending plan) when the extension reconnects
+**So that** a transient WebSocket drop doesn't lose the Claude run or the plan I still need to approve
 
 **Acceptance criteria:**
 
-- [ ] On reconnect, the extension sends `resume_request`; the server returns results cached within the last 24h.
-- [ ] In-flight requests continue processing — they are not dropped because the extension reconnected.
+- [ ] In-flight `change_request`s continue processing on the server regardless of extension connection state — they are never dropped because the extension reconnected.
+- [ ] On reconnect, the extension sends `resume_request`; the server replays (a) status updates for the currently-executing request up to the point of reconnect, and (b) any plan proposal awaiting approval for this client.
+- [ ] Completed `change_result`s are **not** replayed. If the extension was disconnected when the result was delivered, the user sees a one-line notice ("Previous request completed while disconnected — check your git diff") and is returned to the idle state; completed diffs live in the user's git / editor, not in Inspatch.
 
 ### Story 6: Developer is told clearly when Inspatch can't run on the current tab
 
@@ -154,18 +156,34 @@ During frontend development, the loop of "see something to change in the UI → 
 - [ ] In Quick mode, small visual tweaks (color, font-size, spacing, border-radius, shadow, single-element layout) apply directly without a plan round-trip.
 - [ ] In Quick mode, Claude auto-escalates to plan-first when the change requires DOM structure edits, touches a shared class/component used in 3+ places, is ambiguous enough that multiple interpretations materially differ, or would introduce a new dependency or file.
 - [ ] In Discuss mode, Claude never calls Edit/Write/MultiEdit/Bash — it outputs exactly one `## Plan` block (Goal / Files / Approach / Risk) and stops.
-- [ ] When a plan is produced, the side panel renders a plan card with the plan text plus `Apply plan` and `Cancel` buttons; the change input is disabled while the plan is pending.
-- [ ] `Apply plan` re-runs Claude in Quick mode with the approved plan attached so Claude executes without re-planning; `Cancel` discards the plan and returns the panel to element-selected state.
-- [ ] Pending plans expire after 10 minutes of no response. On WebSocket reconnect within that window, `resume_request` replays the pending plan alongside in-flight and recent results.
+- [ ] When a plan is produced, the content script injects a **plan-approval modal** into the inspected page at max z-index (`2147483647`) with a scrim, the plan text, and `Apply plan` / `Cancel` buttons. `Esc` cancels. The side panel shows a compact mirror ("Plan ready — see page overlay") and disables the change input while the plan is pending.
+- [ ] `Apply plan` re-runs Claude in Quick mode with the approved plan attached so Claude executes without re-planning; `Cancel` (button or `Esc`) discards the plan and returns to the element-selected state.
+- [ ] If the content script cannot inject the modal (missing host permission, `chrome://` tab, or non-`file://` tab where injection was refused), the side panel falls back to rendering the plan card inline so the plan is never unreachable.
+- [ ] Pending plans expire after 10 minutes of no response. On WebSocket reconnect within that window, `resume_request` replays the pending plan so the modal (or the fallback card) reappears.
+
+### Story 9: Developer can re-target to a parent element without re-inspecting
+
+**As a** developer who clicked a deeply-nested element but actually wants to edit its wrapper (card, section, form, etc.)
+**I want to** pick an ancestor of the inspected element directly from the selected-element card
+**So that** I don't have to toggle Inspect back on and hunt for the right parent by hover
+
+**Acceptance criteria:**
+
+- [ ] When an element is selected, the side panel's selected-element card renders an **ancestor chain** — one row per ancestor from the clicked element up to (but excluding) `<body>` / `<html>`. Each row shows tag + class summary and, when available, `componentName`.
+- [ ] By default, the clicked element plus its direct parent and grandparent are expanded (up to 3 rows). Deeper ancestors collapse behind a `Show N more` toggle; the toggle is absent when the chain is ≤ 3 rows.
+- [ ] Clicking an ancestor row becomes the active selection: the card re-points, the Inspect Overlay highlight (if still visible) re-targets to that ancestor, and the next `change_request` carries that ancestor's `xpath` / `boundingRect` / `computedStyles` and, on localhost, its Fiber-derived `componentName` / `sourceFile` / `sourceLine` / `sourceColumn`.
+- [ ] The ancestor picker works identically on localhost (React Fiber walk) and `file://` (DOM walk only, Fiber fields omitted — matches FR-25).
+- [ ] `componentName` badges are omitted silently on `file://` — no "unknown" placeholder.
 
 ## Information Architecture
 
 ```
 <Inspatch Chrome Extension>
-├── <Side Panel Main>          # connection status, Inspect toggle, selected-element card, input + Send, request history
+├── <Side Panel Main>          # connection status, Inspect toggle, selected-element card (with ancestor picker), input + Send, current request status + result
 │   ├── <Blocked — Non-localhost>  # shown when the active tab isn't a supported localhost URL
-│   └── <Result Detail>        # expanded view of a single request: status timeline, streamed text, git diff, filesModified list
-└── <Inspect Overlay>          # injected into the inspected page: hover highlight rect + size + component-name tooltip
+│   └── <Result Detail>        # expanded view of the current request: status timeline, streamed text, git diff, filesModified list
+├── <Inspect Overlay>          # injected into the inspected page: hover highlight rect + size + component-name tooltip
+└── <Plan Approval Modal>      # injected into the inspected page at max z-index when a plan needs approval (Discuss mode or quick-mode auto-escalation)
 ```
 
 Non-UI surfaces (out of the IA but part of the product):
@@ -206,11 +224,14 @@ Result Detail → click filename in filesModified
 → POST /open-in-editor → editor (Cursor / VS Code) opens file at target line
 ```
 
-### Flow: Story 5 — Recover results after reconnect
+### Flow: Story 5 — Re-attach to a live request after reconnect
 
 ```
-Extension reconnects → WebSocket open → send resume_request
-→ Side Panel Main request history repopulated with last 24h → Result Detail available for each
+WebSocket drops mid-request → Side Panel Main shows reconnecting banner
+→ WebSocket reopens → send resume_request
+→ if a request is still executing: status stream resumes inline
+→ if a plan is pending approval: plan-approval modal re-injects on the page (or fallback card in the panel)
+→ if neither: panel returns to connected-idle (completed results are not replayed)
 ```
 
 ### Flow: Story 6 — Non-localhost tab
@@ -238,10 +259,11 @@ User opens file:///Users/me/landing/index.html in Chrome
 
 | Screen | Purpose | Primary actions | Detail |
 | ------ | ------- | --------------- | ------ |
-| side-panel-main | Connection status, Inspect entry, selected-element card, description input, request history | Toggle Inspect, type + Send, open result, cancel in-flight | → [./ui.md#side-panel-main](./ui.md) |
+| side-panel-main | Connection status, Inspect entry, selected-element card with ancestor picker, description input, current request status + result | Toggle Inspect, re-target to an ancestor, type + Send, cancel in-flight | → [./ui.md#side-panel-main](./ui.md) |
 | non-localhost-blocked | State of side-panel-main shown when the active tab is neither a supported localhost URL nor a `file://` HTML page; includes a first-time `welcome` variant that introduces the product before the blocked explanation | Navigate to a localhost dev server or a local HTML file, open docs | → [./ui.md#non-localhost-blocked](./ui.md) |
 | inspect-overlay | Visual targeting layer injected into the inspected page | Hover highlight, click-to-select, ESC to cancel | → [./ui.md#inspect-overlay](./ui.md) |
-| result-detail | Single-request result view: status timeline, streamed text, git diff, modified-files list | Expand/collapse, open file in editor, copy diff | → [./ui.md#result-detail](./ui.md) |
+| plan-approval-modal | In-page modal (injected by the content script at max z-index) shown when Claude produces a plan that needs user approval | Apply plan, Cancel, ESC to cancel | → [./ui.md#plan-approval-modal](./ui.md) |
+| result-detail | Current-request result view: status timeline, streamed text, git diff, modified-files list | Expand/collapse, open file in editor, copy diff | → [./ui.md#result-detail](./ui.md) |
 
 Notable states of `side-panel-main` (one screen, many states — see the State Matrix below for the full 8-state grid):
 
@@ -250,8 +272,8 @@ Notable states of `side-panel-main` (one screen, many states — see the State M
 - **connected-idle** — after first use, no element selected; shows the idle `EmptyState`.
 - **element-selected** — `ElementCard` + `ChangeInput` ready for a description.
 - **processing** — in-flight request; shows the processing card with status stream.
-- **awaiting-plan-approval** — Claude emitted a `## Plan` block (either Discuss mode or quick-mode auto-escalation); the panel renders a plan card with `Apply plan` / `Cancel`, and the change input is disabled until the user responds.
-- **result-success / result-failure** — terminal states after `change_result` lands (see `result-detail`).
+- **awaiting-plan-approval** — Claude emitted a `## Plan` block (Discuss mode or quick-mode auto-escalation); the plan-approval modal is visible on the page and the panel shows a compact mirror while the change input is disabled. On tabs where modal injection fails, the panel falls back to rendering the plan card inline.
+- **result-success / result-failure** — terminal states after `change_result` lands; the current request's `result-detail` view is shown until the user selects a new element, dismisses it, or reloads.
 
 ## Functional Requirements
 
@@ -259,7 +281,7 @@ Notable states of `side-panel-main` (one screen, many states — see the State M
 | ----- | ----------- | --------- | -------- |
 | FR-01 | Chrome extension exposes an "Inspect mode": hover highlights the DOM, click selects the element and shows its info in the side panel | inspect-overlay, side-panel-main | P0 |
 | FR-02 | On localhost React pages, the extension captures `componentName`, `sourceFile`, `sourceLine`, `sourceColumn` via a React Fiber main-world script. On `file://` pages these fields are omitted (see FR-25) | inspect-overlay | P0 |
-| FR-03 | Extension collects `xpath`, `boundingRect`, `computedStyles`, optional `screenshotDataUrl`, optional `consoleErrors` | inspect-overlay | P0 |
+| FR-03 | Extension collects `xpath`, `boundingRect`, `computedStyles`, optional `screenshotDataUrl`, optional `consoleErrors`, and `ancestorChain` — an ordered list (clicked element → parent → … excluding `<body>` / `<html>`) where each entry carries tag, class summary, `xpath`, and on localhost the Fiber-derived `componentName` / `sourceFile` / `sourceLine` / `sourceColumn` (omitted on `file://` per FR-25) | inspect-overlay | P0 |
 | FR-04 | Extension talks to the local server over `ws://127.0.0.1:9377`; all messages are validated by shared Zod v4 schemas | side-panel-main | P0 |
 | FR-05 | Server processes `change_request` sequentially via `RequestQueue`, streams `status_update`, returns a final `change_result` | side-panel-main, result-detail | P0 |
 | FR-06 | Server invokes `@anthropic-ai/claude-agent-sdk` with `permissionMode: "acceptEdits"`. Allowed tools depend on request mode: Quick mode gets `Read/Edit/Write/MultiEdit/Bash/Grep/Glob`; Discuss mode (and auto-escalated Quick runs that emit a plan) are restricted to `Read/Grep/Glob`. System prompt is the SDK `claude_code` preset plus the Inspatch UI-editor append defined in FR-33 | n/a (server internal) | P0 |
@@ -267,8 +289,8 @@ Notable states of `side-panel-main` (one screen, many states — see the State M
 | FR-08 | Server exposes `GET /health` (health check) and `POST /open-in-editor` (open file) HTTP endpoints | result-detail | P1 |
 | FR-09 | Server auto-detects the editor (Cursor / VS Code) at startup and uses it for every `open-in-editor` call; the side panel never exposes an editor picker. `--editor` CLI flag is the sole manual override | result-detail | P1 |
 | FR-10 | CLI accepts `-p/--project <dir>` (or positional `<dir>`), `--port`, `--editor`, `--timeout` | n/a (CLI) | P0 |
-| FR-11 | Request queue retains completed results for 24h; supports `resume_request` to replay history | side-panel-main | P1 |
-| FR-12 | Side panel shows request list, status progress, streamed text, and the final git diff | side-panel-main, result-detail | P0 |
+| FR-11 | `resume_request` replays **live state only**: the currently-executing request's status stream (up to the reconnect point) and any plan proposal awaiting approval for this client. Delivered `change_result`s are not retained — the queue is a live pipe, not a history store | side-panel-main | P1 |
+| FR-12 | Side panel renders connection status, the selected-element card (with ancestor picker), the current request's status stream, and its final `change_result`. It does not render a list of past requests | side-panel-main, result-detail | P0 |
 | FR-13 | Clicking a file in `filesModified` triggers `open-in-editor` and jumps to the target line | result-detail | P1 |
 | FR-14 | `@inspatch/server` publishes to npm via `bin/run.cjs`; `npx @inspatch/server ./my-app` is a one-command start | n/a (distribution) | P0 |
 | FR-15 | Extension ships as a zip on GitHub Releases, installable via Chrome's "Load unpacked" | n/a (distribution) | P0 |
@@ -288,8 +310,10 @@ Notable states of `side-panel-main` (one screen, many states — see the State M
 | FR-29 | When `--project` is not a Git repo, the server produces `change_result.diff` via **snapshot-mode diff**: before running Claude, it hashes + stores the content of every file Claude reads/edits; after completion, it computes a unified diff against those snapshots. `change_result` includes `diffMode: "git" \| "snapshot"` so the extension can label the result accordingly | result-detail | P1 |
 | FR-30 | `change_request` carries `mode: "quick" \| "discuss"` (default `quick`). The side panel's change input exposes the toggle so users can force plan-first from the extension | side-panel-main | P0 |
 | FR-31 | In `quick` mode, Claude auto-escalates to plan-first (no edit tools called, `## Plan` block emitted instead) when the change requires DOM-structure edits, touches a shared class/component used in 3+ places without a local-override path, is ambiguous enough that multiple interpretations produce materially different outcomes, or would introduce a new dependency/file. Small visual tweaks always apply directly | side-panel-main | P0 |
-| FR-32 | Server sends `plan_proposal { requestId, plan }` when Claude emits a plan. Extension renders a plan card with `Apply plan` / `Cancel`, which send `plan_approval { requestId, approve: true \| false }`. Approval re-runs Claude in `quick` mode with the approved plan attached so it executes without re-planning; cancellation discards the plan. Pending plans have a 10-minute TTL and are replayed by `resume_request` alongside in-flight and recent results | side-panel-main | P0 |
+| FR-32 | Server sends `plan_proposal { requestId, plan }` when Claude emits a plan. Extension injects the **plan-approval modal** into the inspected page and sends `plan_approval { requestId, approve: true \| false }` when the user acts. Approval re-runs Claude in `quick` mode with the approved plan attached so it executes without re-planning; cancellation discards the plan. Pending plans have a 10-minute TTL and are replayed by `resume_request` so the modal reappears after a reconnect | side-panel-main, plan-approval-modal | P0 |
 | FR-33 | Claude runs use the SDK `claude_code` system prompt with an appended **Inspatch UI-editor system prompt** (scope rules, UI code-quality rules, mode-of-operation, plan block format). The project's `CLAUDE.md` is **not** loaded — the Inspatch prompt is the sole project-level instruction source. `discuss`-mode runs (and auto-escalated quick runs) restrict `allowedTools` to `Read/Grep/Glob` | n/a (server internal) | P0 |
+| FR-34 | Side panel's selected-element card renders the `ancestorChain` from FR-03 as a compact vertical stack. Rows 0–2 (clicked element + 2 ancestors) are expanded by default; deeper rows collapse behind a `Show N more` toggle. Clicking a row re-points the active selection and drives the next `change_request`'s `xpath` / `componentName` / `sourceFile` / `sourceLine` / `boundingRect` / `computedStyles`. The Inspect Overlay highlight (when still visible on the page) follows the re-target | side-panel-main, inspect-overlay | P1 |
+| FR-35 | Plan-approval modal is injected by the content script into the inspected page at `z-index: 2147483647` with a scrim; `Apply plan` / `Cancel` buttons plus `Esc` drive `plan_approval`. Per-tab lifecycle (tab switch preserves it; tab close cancels). When injection is refused (missing host permission, `chrome://` tab, `file://` tab without "Allow access to file URLs"), the extension falls back to rendering the plan card inline in the side panel so no plan is ever unreachable | plan-approval-modal, side-panel-main | P0 |
 
 Priority: `P0` = must have, `P1` = should have, `P2` = nice to have.
 
@@ -299,9 +323,10 @@ Priority: `P0` = must have, `P1` = should have, `P2` = nice to have.
 
 | Screen | Default | Empty | Loading | Error | Success | Offline | Blocked | Permission-denied |
 | ------ | ------- | ----- | ------- | ----- | ------- | ------- | ------- | ----------------- |
-| side-panel-main | ✓ (welcome = first-run onboarding; connected-idle = after first use) | ✓ (no history) | ✓ (connecting / in-flight request / awaiting-plan-approval — plan card rendered, input disabled) | ✓ (WebSocket disconnected, Claude error) | ✓ (completed entries in history) | ✓ (disconnected: server not running → `StatusGuide`; reconnecting: chip pulses + banner) | ✓ (non-localhost URL — see `non-localhost-blocked` screen) | n/a |
+| side-panel-main | ✓ (welcome = first-run onboarding; connected-idle = after first use) | ✓ (no active request) | ✓ (connecting / in-flight request / awaiting-plan-approval — compact mirror while the in-page modal is visible, or inline fallback card when injection was refused; input disabled) | ✓ (WebSocket disconnected, Claude error) | ✓ (current request's `change_result` rendered until user dismisses or selects a new element — no historical list) | ✓ (disconnected: server not running → `StatusGuide`; reconnecting: chip pulses + banner) | ✓ (non-localhost URL — see `non-localhost-blocked` screen) | n/a |
 | non-localhost-blocked | ✓ (blocked card with remembered localhost URL) | ✓ (welcome variant: first-time open on a non-localhost tab — intro lede before the blocked card) | n/a | ✓ (`chrome.tabs` permission missing → fallback copy, no primary CTA) | n/a | n/a | ✓ (this screen *is* the blocked state) | n/a |
-| inspect-overlay | ✓ (React mode with Fiber; DOM-only mode on `file://` pages — see FR-25) | n/a | n/a | ✓ (Fiber lookup failed → fallback to DOM info) | ✓ (element selected) | n/a | n/a | ✓ (host permission missing for current origin; "Allow access to file URLs" not granted on a `file://` page) |
+| inspect-overlay | ✓ (React mode with Fiber; DOM-only mode on `file://` pages — see FR-25) | n/a | n/a | ✓ (Fiber lookup failed → fallback to DOM info) | ✓ (element selected; highlight re-targets when the user picks an ancestor in the side panel — see FR-34) | n/a | n/a | ✓ (host permission missing for current origin; "Allow access to file URLs" not granted on a `file://` page) |
+| plan-approval-modal | ✓ (plan text + Apply plan / Cancel, scrim, max z-index) | n/a | ✓ (approval in flight — buttons disabled until the server ACKs) | ✓ (approval failed — inline error + retry) | n/a (success closes the modal and hands control back to the side panel's status stream) | ✓ (WebSocket dropped mid-plan: scrim shows reconnecting state; modal reappears via `resume_request`) | n/a | ✓ (content-script injection refused → side-panel fallback card per FR-35) |
 | result-detail | ✓ | ✓ (before first status_update) | ✓ (status stream in flight) | ✓ (error status + message) | ✓ (git diff + filesModified) | n/a | n/a | n/a |
 
 ## Non-Functional Requirements
@@ -318,8 +343,8 @@ Priority: `P0` = must have, `P1` = should have, `P2` = nice to have.
   - Claude Agent SDK runs with `permissionMode: "acceptEdits"` — edits allowed, arbitrary execution not (Bash tool is only used for git/search).
   - No code, prompt, or diff content is sent to any third party.
 - **Reliability / Uptime:**
-  - Queue preserves request order; exceptions never lose a request; completed results are queryable for 24h.
-  - WebSocket auto-reconnects with exponential backoff; reconnect restores recent results.
+  - Queue preserves request order; exceptions never lose the currently-executing request mid-flight.
+  - WebSocket auto-reconnects with exponential backoff; `resume_request` restores live state only (in-flight request + pending plan), not past results.
   - Claude runner exceptions (timeout, process exit) always return an explicit `error` state to the extension.
 - **Scalability:**
   - Protocol uses Zod discriminated unions; new message types do not break old clients.
@@ -335,7 +360,7 @@ Priority: `P0` = must have, `P1` = should have, `P2` = nice to have.
 
 - **Runtime / framework:** Bun runtime + strict TypeScript; extension built with WXT (Chrome MV3) + React 19 + Tailwind v4; server is native Bun HTTP + WebSocket.
 - **Key dependencies:** `@anthropic-ai/claude-agent-sdk` (local Claude invocation), WXT (extension build), Zod v4 (shared protocol), React 19.
-- **Key protocol / data flow:** Extension captures element context → sends `change_request` (carrying `pageSource: "localhost" | "file"`, `mode: "quick" | "discuss"`, plus Fiber info on localhost / `filePath` on `file://`) over `ws://127.0.0.1:9377` → server `RequestQueue` serializes work → `claude-runner` picks prompt template by `pageSource`, appends the Inspatch UI-editor system prompt to the SDK's `claude_code` preset, and calls the Agent SDK (tools `Read/Edit/Write/MultiEdit/Bash/Grep/Glob` in quick mode; `Read/Grep/Glob` in discuss mode and auto-escalated quick runs) → if Claude emits a `## Plan` block instead of editing, the server stashes the request (10-min TTL) and sends `plan_proposal`; on `plan_approval { approve: true }` the request is re-queued in quick mode with the approved plan attached so Claude executes without re-planning → server computes `git diff` (or snapshot-mode diff when the project is not a Git repo) → streams `status_update` and returns `change_result` (including `diffMode`) to the extension.
+- **Key protocol / data flow:** Extension captures element context (including `ancestorChain` — see FR-03) → sends `change_request` (carrying `pageSource: "localhost" | "file"`, `mode: "quick" | "discuss"`, plus Fiber info on localhost / `filePath` on `file://`) over `ws://127.0.0.1:9377` → server `RequestQueue` serializes work → `claude-runner` picks prompt template by `pageSource`, appends the Inspatch UI-editor system prompt to the SDK's `claude_code` preset, and calls the Agent SDK (tools `Read/Edit/Write/MultiEdit/Bash/Grep/Glob` in quick mode; `Read/Grep/Glob` in discuss mode and auto-escalated quick runs) → if Claude emits a `## Plan` block instead of editing, the server stashes the request (10-min TTL) and sends `plan_proposal`; the extension's content script injects the **plan-approval modal** into the inspected page at max z-index (or the side panel falls back to an inline card when injection is refused) and returns `plan_approval` when the user acts; on `{ approve: true }` the request is re-queued in quick mode with the approved plan attached so Claude executes without re-planning → server computes `git diff` (or snapshot-mode diff when the project is not a Git repo) → streams `status_update` and returns `change_result` (including `diffMode`) to the extension. Completed results are delivered once and not retained; `resume_request` replays only the currently-executing request and any pending plan proposal.
 - **Detail:** see [./fe.md](./fe.md) and [./api.md](./api.md).
 
 ## Open Questions
@@ -350,6 +375,7 @@ Priority: `P0` = must have, `P1` = should have, `P2` = nice to have.
 | Do we support non-Git projects? (Current result flow depends on `git diff`.) — **Resolved in v0.2.0:** snapshot-mode diff via FR-29. | Core team | 2026-05-30 |
 | Is Claude's single-shot hit rate on DOM-only (`file://`) requests within the 85% target, or does it need a distinct baseline? | Core team | 2026-06-30 |
 | Should we treat detected build artifacts (`dist/`, `build/`, `.next/`) in `--project` as read-only and warn the user? | Core team | 2026-06-30 |
+| Is the side-panel inline plan card the right fallback when the plan-approval modal can't be injected (FR-35), or should we also surface a Chrome notification so a user focused on another window still learns the plan is ready? | Core team | 2026-06-30 |
 
 ## Dependencies
 
@@ -371,7 +397,7 @@ Priority: `P0` = must have, `P1` = should have, `P2` = nice to have.
 | PRD frozen                | 2026-04-20 |
 | UI doc complete           | 2026-04-24 |
 | Frontend / API doc complete | 2026-04-28 |
-| Dev complete (P1 items: FR-08, FR-09, FR-11, FR-13, FR-16, FR-18, FR-27, FR-28, FR-29) | 2026-05-15 |
+| Dev complete (P1 items: FR-08, FR-09, FR-11, FR-13, FR-16, FR-18, FR-27, FR-28, FR-29, FR-34) | 2026-05-15 |
 | QA complete               | 2026-06-10 |
 | Launch (0.2.0 release)    | 2026-06-30 |
 

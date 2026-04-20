@@ -83,25 +83,29 @@
   from { opacity: 0; transform: translateY(-8px); }
   to { opacity: 1; transform: translateY(0); }
 }
-@keyframes glow-pulse {
-  0%, 100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); }
-  50% { box-shadow: 0 0 12px 2px rgba(239, 68, 68, 0.25); }
+@keyframes glow-error {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(255, 110, 132, 0); }
+  50% { box-shadow: 0 0 0 3px rgba(255, 110, 132, 0.22); }
 }
 @keyframes shimmer {
   0% { background-position: -200% 0; }
   100% { background-position: 200% 0; }
 }
-@keyframes status-dot {
-  0%, 100% { transform: scale(1); }
-  50% { transform: scale(1.4); }
+@keyframes blink {
+  50% { opacity: 0; }
+}
+@keyframes soft-pulse {
+  0%, 100% { opacity: 0.35; transform: scale(1); }
+  50% { opacity: 0.7; transform: scale(1.05); }
 }
 
 .animate-fade-in { animation: fade-in 0.25s ease-out both; }
 .animate-fade-in-scale { animation: fade-in-scale 0.2s ease-out both; }
 .animate-slide-up { animation: slide-up 0.3s ease-out both; }
 .animate-slide-down { animation: slide-down 0.2s ease-out both; }
-.animate-glow-pulse { animation: glow-pulse 2s ease-in-out infinite; }
-.animate-status-dot { animation: status-dot 1.5s ease-in-out infinite; }
+.animate-glow-error { animation: glow-error 2s ease-in-out infinite; }
+.animate-blink { animation: blink 1s steps(2, start) infinite; }
+.animate-soft-pulse { animation: soft-pulse 2s ease-in-out infinite; }
 .animate-shimmer {
   background: linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.03) 50%, transparent 100%);
   background-size: 200% 100%;
@@ -130,6 +134,14 @@
 *:focus-visible {
   outline: none;
   box-shadow: 0 0 0 2px var(--ip-border-accent), var(--ip-shadow-glow-accent);
+}
+/* Form inputs manage their own focus UX via parent container's focus-within
+   pattern (see ChangeInput). Without this override the global ring above
+   stacks a 2nd frame inside the container border. */
+input:focus-visible,
+textarea:focus-visible,
+select:focus-visible {
+  box-shadow: none;
 }
 
 button, [role="button"], a {

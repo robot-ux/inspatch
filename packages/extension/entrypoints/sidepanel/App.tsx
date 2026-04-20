@@ -116,7 +116,7 @@ export default function App() {
     }
   }, [lastMessage]);
 
-  const sendToContentScript = useCallback(async (message: { type: string }) => {
+  const sendToContentScript = useCallback(async (message: { type: string } & Record<string, unknown>) => {
     setTransientError(null);
     const [tab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
     if (!tab?.id) {
@@ -324,6 +324,44 @@ export default function App() {
     }
   }, [sendToContentScript]);
 
+  const handleAncestorHover = useCallback(
+    async (xpath: string) => {
+      try {
+        await sendToContentScript({ type: "highlight-ancestor", xpath });
+      } catch {
+        // ignore
+      }
+    },
+    [sendToContentScript],
+  );
+
+  const handleAncestorLeave = useCallback(async () => {
+    try {
+      await sendToContentScript({ type: "clear-highlight" });
+    } catch {
+      // ignore
+    }
+  }, [sendToContentScript]);
+
+  const handleAncestorSelect = useCallback(
+    async (xpath: string) => {
+      try {
+        // Content script re-selects and broadcasts a new element_selection
+        // message; selectedElement updates via the existing onRuntimeMessage
+        // listener. Reset transient result state so the new selection starts fresh.
+        await sendToContentScript({ type: "select-ancestor", xpath });
+        setProcessing(null);
+        setChangeResult(null);
+        setPendingPlan(null);
+        setStreamedText("");
+        setStatusLog([]);
+      } catch {
+        // transientError already set
+      }
+    },
+    [sendToContentScript],
+  );
+
   const handleSendChange = useCallback(
     (description: string, imageDataUrl?: string, mode: ChangeMode = "quick") => {
       if (!selectedElement) return;
@@ -342,7 +380,7 @@ export default function App() {
         description,
         elementXpath: selectedElement.xpath,
         componentName: selectedElement.componentName,
-        parentChain: selectedElement.parentChain,
+        ancestors: selectedElement.ancestors,
         sourceFile: selectedElement.sourceFile,
         sourceLine: selectedElement.sourceLine,
         sourceColumn: selectedElement.sourceColumn,
@@ -434,11 +472,15 @@ export default function App() {
       transientError={transientError}
       showFileUrlBanner={urlKind === "file" && !fileUrlPermission}
       extensionId={extensionId}
+      currentTabUrl={currentTabUrl}
       onStartInspect={handleStartInspect}
       onStopInspect={handleStopInspect}
       onClear={handleClear}
       onElementHover={handleElementHover}
       onElementLeave={handleElementLeave}
+      onAncestorHover={handleAncestorHover}
+      onAncestorLeave={handleAncestorLeave}
+      onAncestorSelect={handleAncestorSelect}
       onSendChange={handleSendChange}
       onApprovePlan={handleApprovePlan}
       onCancelPlan={handleCancelPlan}

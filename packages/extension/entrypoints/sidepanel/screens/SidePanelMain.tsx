@@ -5,10 +5,12 @@ import { ConsoleErrorTray } from "../components/ConsoleErrorTray";
 import { ElementCard } from "../components/ElementCard";
 import { EmptyState } from "../components/EmptyState";
 import { FileUrlPermissionBanner } from "../components/FileUrlPermissionBanner";
+import { FooterMeta } from "../components/FooterMeta";
 import { HeaderBar } from "../components/HeaderBar";
 import { OnboardingSteps } from "../components/OnboardingSteps";
 import { PlanProposal } from "../components/PlanProposal";
 import { ProcessingStatus } from "../components/ProcessingStatus";
+import { StatusDot } from "../components/StatusDot";
 import { StatusGuide } from "../components/StatusGuide";
 
 type InspectState = "idle" | "inspecting";
@@ -29,12 +31,16 @@ interface SidePanelMainProps {
   transientError: string | null;
   showFileUrlBanner: boolean;
   extensionId: string;
+  currentTabUrl?: string;
 
   onStartInspect: () => void;
   onStopInspect: () => void;
   onClear: () => void;
   onElementHover: () => void;
   onElementLeave: () => void;
+  onAncestorHover: (xpath: string) => void;
+  onAncestorLeave: () => void;
+  onAncestorSelect: (xpath: string) => void;
   onSendChange: (description: string, imageDataUrl?: string, mode?: ChangeMode) => void;
   onApprovePlan: () => void;
   onCancelPlan: () => void;
@@ -59,11 +65,15 @@ export function SidePanelMain(props: SidePanelMainProps) {
     transientError,
     showFileUrlBanner,
     extensionId,
+    currentTabUrl,
     onStartInspect,
     onStopInspect,
     onClear,
     onElementHover,
     onElementLeave,
+    onAncestorHover,
+    onAncestorLeave,
+    onAncestorSelect,
     onSendChange,
     onApprovePlan,
     onCancelPlan,
@@ -89,6 +99,7 @@ export function SidePanelMain(props: SidePanelMainProps) {
         showInspectToggle={showCompactToggle}
         inspecting={inspecting}
         inspectDisabled={inspectBlocked}
+        currentTabUrl={currentTabUrl}
         onInspect={inspecting ? onStopInspect : onStartInspect}
         onReconnect={onReconnect}
       />
@@ -96,7 +107,7 @@ export function SidePanelMain(props: SidePanelMainProps) {
       {showFileUrlBanner && <FileUrlPermissionBanner extensionId={extensionId} />}
 
       {transientError && (
-        <div className="animate-slide-down border-b border-[rgba(193,128,255,0.30)] bg-ip-warning-muted px-4 py-2">
+        <div className="animate-slide-down border-b border-ip-warning/30 bg-ip-warning-muted px-4 py-2">
           <p className="text-[11px] text-ip-warning">{transientError}</p>
         </div>
       )}
@@ -106,7 +117,7 @@ export function SidePanelMain(props: SidePanelMainProps) {
       </main>
 
       {elementVisible && !selectedElement?.sourceFile && selectedElement?.pageSource !== "file" && (
-        <div className="border-t border-[rgba(193,128,255,0.30)] bg-ip-warning-muted px-4 py-2">
+        <div className="border-t border-ip-warning/30 bg-ip-warning-muted px-4 py-2">
           <p className="text-[11px] text-ip-warning">
             No source file detected — changes may require manual file lookup. Ensure your dev server has source maps enabled.
           </p>
@@ -122,6 +133,11 @@ export function SidePanelMain(props: SidePanelMainProps) {
       {elementVisible && (
         <ChangeInput onSend={onSendChange} disabled={disconnected || !!processing || !!pendingPlan} />
       )}
+
+      <FooterMeta
+        left={<>ws://127.0.0.1:9377</>}
+        right={<ConnectionStatusBadge status={connectionStatus} />}
+      />
     </div>
   );
 
@@ -147,6 +163,9 @@ export function SidePanelMain(props: SidePanelMainProps) {
           onLeave={onElementLeave}
           onClear={onClear}
           onOpenSource={onOpenSource}
+          onAncestorHover={onAncestorHover}
+          onAncestorLeave={onAncestorLeave}
+          onAncestorSelect={onAncestorSelect}
         />
         {pendingPlan ? (
           <PlanProposal
@@ -170,4 +189,29 @@ export function SidePanelMain(props: SidePanelMainProps) {
       </div>
     );
   }
+}
+
+function ConnectionStatusBadge({ status }: { status: ConnectionStatus }) {
+  if (status === "connected") {
+    return (
+      <>
+        <StatusDot tone="success" anim="ping" size={6} />
+        <span className="text-ip-success">connected</span>
+      </>
+    );
+  }
+  if (status === "reconnecting") {
+    return (
+      <>
+        <StatusDot tone="warning" anim="pulse" size={6} />
+        <span className="text-ip-warning">reconnecting</span>
+      </>
+    );
+  }
+  return (
+    <>
+      <StatusDot tone="error" size={6} />
+      <span className="text-ip-error">offline</span>
+    </>
+  );
 }

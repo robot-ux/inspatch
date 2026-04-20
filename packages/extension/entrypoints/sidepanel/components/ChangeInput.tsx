@@ -33,6 +33,7 @@ const SUGGESTIONS: readonly string[] = [
   "Improve accessibility",
 ];
 
+const MIN_HEIGHT = 28;
 const MAX_HEIGHT = 160;
 
 function readImageFromFile(file: File): Promise<string> {
@@ -58,7 +59,7 @@ export function ChangeInput({ onSend, disabled = false }: ChangeInputProps) {
     const el = textareaRef.current;
     if (!el) return;
     el.style.height = "auto";
-    const next = Math.min(el.scrollHeight, MAX_HEIGHT);
+    const next = Math.max(MIN_HEIGHT, Math.min(el.scrollHeight, MAX_HEIGHT));
     el.style.height = `${next}px`;
     el.style.overflowY = el.scrollHeight > MAX_HEIGHT ? "auto" : "hidden";
   }, []);
@@ -76,7 +77,7 @@ export function ChangeInput({ onSend, disabled = false }: ChangeInputProps) {
     requestAnimationFrame(() => {
       const el = textareaRef.current;
       if (el) {
-        el.style.height = "auto";
+        el.style.height = `${MIN_HEIGHT}px`;
         el.style.overflowY = "hidden";
       }
     });
@@ -144,53 +145,40 @@ export function ChangeInput({ onSend, disabled = false }: ChangeInputProps) {
     });
   }, []);
 
+  const hasAttachments = attachments.length > 0;
+
   return (
     <div className="animate-slide-up border-t border-ip-border-subtle bg-ip-bg-secondary px-3 py-2">
       <div
-        className={`flex items-end gap-2 rounded-ip-md border bg-ip-bg-input px-2 py-1.5 transition-colors ${
+        className={`rounded-ip-md border bg-ip-bg-input transition-[border-color,box-shadow] duration-150 ${
           disabled
             ? "border-ip-border-subtle opacity-60"
-            : "border-ip-border-subtle focus-within:border-ip-border-accent"
+            : "border-ip-border-subtle focus-within:border-ip-border-accent focus-within:shadow-ip-glow-accent"
         }`}
       >
-        <button
-          type="button"
-          onClick={() => fileInputRef.current?.click()}
-          disabled={disabled}
-          aria-label="Attach screenshot"
-          title="Attach screenshot"
-          className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-ip-sm text-ip-text-muted transition-colors hover:bg-ip-bg-tertiary/50 hover:text-ip-text-accent active:scale-95 disabled:cursor-not-allowed disabled:opacity-40"
-        >
-          <PaperclipIcon size={14} />
-        </button>
-        <input
-          ref={fileInputRef}
-          type="file"
-          accept="image/*"
-          multiple
-          className="hidden"
-          onChange={handleFileInput}
-        />
+        {hasAttachments && (
+          <div className="flex flex-wrap gap-1.5 px-3 pb-1 pt-2.5">
+            {attachments.map((a) => (
+              <div key={a.id} className="group relative animate-fade-in-scale">
+                <img
+                  src={a.dataUrl}
+                  alt="Attachment"
+                  className="h-10 w-10 rounded-ip-sm border border-ip-border-subtle object-cover"
+                />
+                <button
+                  type="button"
+                  onClick={() => removeAttachment(a.id)}
+                  aria-label="Remove attachment"
+                  className="absolute -right-1 -top-1 flex h-4 w-4 items-center justify-center rounded-full bg-ip-bg-tertiary text-ip-text-primary opacity-0 transition-opacity group-hover:opacity-100 focus:opacity-100"
+                >
+                  <XIcon size={10} />
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
 
-        <div className="flex min-w-0 flex-1 flex-wrap items-end gap-1.5 py-0.5">
-          {attachments.map((a) => (
-            <div key={a.id} className="group relative flex-shrink-0 animate-fade-in-scale">
-              <img
-                src={a.dataUrl}
-                alt="Attachment"
-                className="h-8 w-8 rounded-ip-sm border border-ip-border-subtle object-cover"
-              />
-              <button
-                type="button"
-                onClick={() => removeAttachment(a.id)}
-                aria-label="Remove attachment"
-                className="absolute -right-1 -top-1 flex h-3.5 w-3.5 items-center justify-center rounded-full bg-ip-bg-tertiary text-[9px] leading-none text-ip-text-primary opacity-0 transition-opacity group-hover:opacity-100 focus:opacity-100"
-              >
-                <XIcon size={10} />
-              </button>
-            </div>
-          ))}
-
+        <div className={`px-3 pb-2 ${hasAttachments ? "pt-1" : "pt-2.5"}`}>
           <textarea
             ref={textareaRef}
             value={value}
@@ -198,45 +186,55 @@ export function ChangeInput({ onSend, disabled = false }: ChangeInputProps) {
             onKeyDown={handleKeyDown}
             onPaste={handlePaste}
             disabled={disabled}
-            rows={1}
             placeholder="Describe the change… (⌘V to paste screenshot)"
-            className="min-w-[120px] flex-1 resize-none bg-transparent text-[13px] leading-5 text-ip-text-primary placeholder:text-ip-text-muted focus:outline-none disabled:cursor-not-allowed"
-            style={{ maxHeight: `${MAX_HEIGHT}px`, overflowY: "hidden" }}
+            className="block w-full resize-none appearance-none border-0 bg-transparent p-0 text-[13px] leading-5 text-ip-text-primary placeholder:text-ip-text-muted outline-none focus:outline-none focus:ring-0 disabled:cursor-not-allowed"
+            style={{ minHeight: `${MIN_HEIGHT}px`, maxHeight: `${MAX_HEIGHT}px`, overflowY: "hidden" }}
           />
         </div>
 
-        <button
-          type="button"
-          onClick={handleSend}
-          disabled={!canSend}
-          aria-label="Send"
-          title="Send (Enter)"
-          className={`flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-ip-sm transition-all duration-150 ${
-            canSend
-              ? "bg-linear-[135deg] from-ip-gradient-start to-ip-gradient-end text-white hover:brightness-110 hover:shadow-ip-glow-accent active:scale-95"
-              : "cursor-not-allowed bg-ip-bg-tertiary text-ip-text-muted opacity-40"
-          }`}
-        >
-          <SendIcon size={13} />
-        </button>
+        <div className="flex items-center gap-1.5 border-t border-ip-border-subtle/60 px-2 py-1.5">
+          <button
+            type="button"
+            onClick={() => fileInputRef.current?.click()}
+            disabled={disabled}
+            aria-label="Attach screenshot"
+            title="Attach screenshot"
+            className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-ip-sm text-ip-text-muted transition-colors hover:bg-ip-bg-tertiary/60 hover:text-ip-text-accent active:scale-95 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            <PaperclipIcon size={14} />
+          </button>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/*"
+            multiple
+            className="hidden"
+            onChange={handleFileInput}
+          />
+
+          <ModeSegmented mode={mode} onChange={setMode} disabled={disabled} />
+
+          <div className="flex-1" />
+
+          <button
+            type="button"
+            onClick={handleSend}
+            disabled={!canSend}
+            aria-label="Send"
+            title="Send (Enter)"
+            className={`flex h-7 items-center gap-1.5 rounded-ip-sm px-2.5 text-[12px] font-medium transition-all duration-150 ${
+              canSend
+                ? "bg-linear-[135deg] from-ip-gradient-start to-ip-gradient-end text-white hover:brightness-110 hover:shadow-ip-glow-accent active:scale-95"
+                : "cursor-not-allowed bg-ip-bg-tertiary text-ip-text-muted opacity-40"
+            }`}
+          >
+            <SendIcon size={12} />
+            <span>Send</span>
+          </button>
+        </div>
       </div>
 
       <div className="-mx-1 mt-1.5 flex items-center gap-1.5 overflow-x-auto px-1 pb-0.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-        <button
-          type="button"
-          onClick={() => setMode((m) => (m === "quick" ? "discuss" : "quick"))}
-          disabled={disabled}
-          title={MODE_LABELS[mode].hint}
-          aria-label={`Mode: ${MODE_LABELS[mode].label}. Click to switch.`}
-          className={`h-6 flex-shrink-0 whitespace-nowrap rounded-full border px-2 text-[11px] font-medium transition-all duration-150 active:scale-95 disabled:cursor-not-allowed disabled:opacity-40 ${
-            mode === "quick"
-              ? "border-ip-border-accent bg-ip-bg-tertiary/70 text-ip-text-accent"
-              : "border-[rgba(163,166,255,0.40)] bg-ip-info-muted text-ip-info"
-          }`}
-        >
-          {mode === "quick" ? "⚡ Quick" : "💬 Discuss"}
-        </button>
-        <div className="h-4 w-px flex-shrink-0 bg-ip-border-subtle" />
         {SUGGESTIONS.map((text) => (
           <button
             key={text}
@@ -253,6 +251,45 @@ export function ChangeInput({ onSend, disabled = false }: ChangeInputProps) {
       <p className="mt-1 select-none text-center text-[10px] text-ip-text-muted/50">
         ↵ Send · ⇧↵ New line
       </p>
+    </div>
+  );
+}
+
+interface ModeSegmentedProps {
+  mode: ChangeMode;
+  onChange: (mode: ChangeMode) => void;
+  disabled: boolean;
+}
+
+function ModeSegmented({ mode, onChange, disabled }: ModeSegmentedProps) {
+  const options: ChangeMode[] = ["quick", "discuss"];
+  return (
+    <div
+      role="radiogroup"
+      aria-label="Change mode"
+      className="inline-flex h-7 flex-none items-center rounded-ip-sm border border-ip-border-subtle bg-ip-bg-tertiary/30 p-0.5"
+    >
+      {options.map((opt) => {
+        const active = mode === opt;
+        return (
+          <button
+            key={opt}
+            type="button"
+            role="radio"
+            aria-checked={active}
+            onClick={() => onChange(opt)}
+            disabled={disabled}
+            title={MODE_LABELS[opt].hint}
+            className={`inline-flex h-6 items-center rounded-[5px] px-2 text-[11px] font-medium transition-all duration-150 disabled:cursor-not-allowed disabled:opacity-40 ${
+              active
+                ? "bg-ip-bg-primary text-ip-text-primary shadow-ip-card"
+                : "text-ip-text-muted hover:text-ip-text-secondary"
+            }`}
+          >
+            {MODE_LABELS[opt].label}
+          </button>
+        );
+      })}
     </div>
   );
 }

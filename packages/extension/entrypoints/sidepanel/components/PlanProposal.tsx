@@ -1,6 +1,8 @@
 import ReactMarkdown from "react-markdown";
 import { mdComponents } from "./markdown";
 import { CheckIcon, XIcon } from "./icons";
+import { InspatchMark } from "./InspatchWordmark";
+import { Pill } from "./Pill";
 
 interface PlanProposalProps {
   plan: string;
@@ -16,14 +18,19 @@ export function PlanProposal({ plan, onApprove, onCancel, disabled = false }: Pl
   const body = plan.replace(/^##\s*Plan\s*\n?/i, "").trim();
 
   return (
-    <div className="animate-fade-in-scale space-y-3 rounded-ip-lg border border-[rgba(163,166,255,0.30)] bg-ip-info-muted p-4">
-      <div className="flex items-center gap-2">
-        <span className="text-[13px] font-semibold text-ip-info">Plan ready for review</span>
+    <div className="animate-fade-in-scale overflow-hidden rounded-ip-lg border border-ip-text-accent/30 bg-ip-info-muted">
+      <div className="flex items-center gap-2 border-b border-ip-border-subtle bg-linear-[180deg] from-ip-warning-muted to-transparent px-4 py-2.5">
+        <InspatchMark size={14} className="text-ip-text-primary" accent="#a3a6ff" />
+        <span className="text-[13px] font-semibold tracking-tight text-ip-text-primary">
+          inspatch · plan
+        </span>
+        <Pill tone="warning">auto-escalated</Pill>
       </div>
 
-      <div className="rounded-ip-sm bg-ip-bg-primary p-3">
-        <ReactMarkdown components={mdComponents}>{body}</ReactMarkdown>
-      </div>
+      <div className="space-y-3 px-4 py-3">
+        <div className="rounded-ip-sm bg-ip-bg-primary p-3">
+          <ReactMarkdown components={mdComponents}>{body}</ReactMarkdown>
+        </div>
 
       <div className="flex items-center gap-2">
         <button
@@ -46,9 +53,10 @@ export function PlanProposal({ plan, onApprove, onCancel, disabled = false }: Pl
         </button>
       </div>
 
-      <p className="text-[10px] text-ip-text-muted/60">
-        Approving will re-run Claude to execute the plan. Cancel discards it.
-      </p>
+        <p className="text-[10px] text-ip-text-muted/60">
+          Approving will re-run Claude to execute the plan. Cancel discards it.
+        </p>
+      </div>
     </div>
   );
 }
