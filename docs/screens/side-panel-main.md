@@ -9,8 +9,8 @@ patterns from docs/ui.md. Every token/value below is a reference to ui.md.
 
 - **Base UI doc:** [../ui.md](../ui.md) — design system, tokens, shared patterns
 - **PRD:** [../prd.md](../prd.md) — upstream requirements and user stories
-- **Related FR(s):** FR-01, FR-03, FR-04, FR-05, FR-09, FR-11, FR-12, FR-16, FR-19, FR-20, FR-22, FR-23
-- **User story(ies):** Story 1, Story 2, Story 3, Story 5
+- **Related FR(s):** FR-01, FR-03, FR-04, FR-05, FR-09, FR-11, FR-12, FR-16, FR-19, FR-20, FR-22, FR-23, FR-24, FR-25, FR-28, FR-29
+- **User story(ies):** Story 1, Story 2, Story 3, Story 5, Story 7
 
 ## Purpose
 
@@ -20,7 +20,7 @@ One-screen cockpit: see whether the server is alive, start Inspect, read what yo
 
 - **Entry points:** user clicks the Inspatch extension icon on any Chrome tab → side panel opens and attaches to the active tab.
 - **Exit points:** user closes the side panel (request continues server-side); user switches the active tab (panel re-evaluates localhost status — may flip to `non-localhost-blocked`); user clicks a file path in the result → jumps to the editor (external).
-- **Primary user:** frontend engineer working on a React app served from `localhost`.
+- **Primary user:** frontend engineer working on a React app served from `localhost`, or hand-authoring an HTML/CSS file opened directly in Chrome via `file://`.
 
 ## Layout
 
@@ -43,11 +43,13 @@ Vertical stack, full height, fixed header + footer, scrolling body. Page archety
 | `isLocalhost`          | active tab URL                                   | boolean                                           | When false, the panel flips to the `non-localhost-blocked` screen |
 | `suggestedPrompts`     | static list for now; contextual derivation is an Open Question | `string[]`                                       | Feeds the suggestion-chip row under the input |
 | `attachments`          | pasted or captured screenshots                   | `{ id, dataUrl, label }[]`                       | Inline chips inside the input row; sent as `screenshotDataUrl` on submit |
-| `selectedElement`      | `ElementSelection` from content script           | `@inspatch/shared` schema                         | `tagName`, `id`, `className`, `xpath`, `componentName`, `parentChain`, `sourceFile`, `sourceLine`, `sourceColumn`, `boundingRect`, `computedStyles` |
+| `selectedElement`      | `ElementSelection` from content script           | `@inspatch/shared` schema                         | Localhost React: `tagName`, `id`, `className`, `xpath`, `componentName`, `parentChain`, `sourceFile`, `sourceLine`, `sourceColumn`, `boundingRect`, `computedStyles`. `file://` (DOM-only, FR-25): same minus `componentName` / `sourceFile` / `sourceLine` / `sourceColumn`; gains `pageSource: "file"` + absolute `filePath` |
+| `pageSource`           | derived from active tab URL                      | `'localhost' \| 'file'`                           | Drives ElementCard variant + banner visibility |
+| `fileUrlPermission`    | `chrome.extension.isAllowedFileSchemeAccess()`   | boolean                                           | `false` on `file://` pages without the extension's "Allow access to file URLs" toggle — triggers the permission banner (FR-28) |
 | `processing`           | server `status_update`                           | `StatusUpdate` schema                             | queued / analyzing / locating / generating / applying / complete / error |
 | `streamedText`         | concatenated `status_update.streamText`          | Markdown                                          | Rendered via `react-markdown` with project overrides |
 | `statusLog`            | derived from non-terminal `status_update`        | `string[]`                                        | Operation log, 11px mono, auto-scrolls |
-| `changeResult`         | server `change_result`                           | `ChangeResult` schema                             | `success`, `summary` (md), `filesModified[]`, `diff`, `error?` |
+| `changeResult`         | server `change_result`                           | `ChangeResult` schema                             | `success`, `summary` (md), `filesModified[]`, `diff`, `diffMode: 'git' \| 'snapshot'` (FR-29), `error?` |
 | `consoleErrors`        | page console bridge                              | `ConsoleError[]` (last 20)                        | Sent along with next `change_request` |
 
 ## Actions
@@ -83,7 +85,7 @@ Vertical stack, full height, fixed header + footer, scrolling body. Page archety
 | **Disabled**  | Send button when the textarea is empty AND no attachments are present, OR when no element is selected; Start Inspect never disabled once WS is connected | Send is `bg-ip-bg-tertiary text-ip-text-muted cursor-not-allowed`; textarea still editable | User types / attaches / selects element |
 | **Loading**   | **processing** — between send and final result | `ElementCard` + in-flight `ProcessingStatus` card: spinner (`animate-spin`) + status label + `animate-shimmer` overlay + operation log + streamed markdown; Send button reverts to disabled | `change_result` received → flips to result-success / result-failure |
 | **Empty**     | **connected-idle after first use** — server connected, Inspect used at least once, no element selected, no in-flight request, no result | Idle `EmptyState` card: icon + "No element selected" + subtle hint to click Inspect again | User clicks Inspect |
-| **Error**     | Four distinct failure sources:<br>• **disconnected** — WS not connected → `StatusGuide` explaining how to start `@inspatch/server`<br>• **reconnecting** — transient drop → chip pulses `--ip-warning` + `animate-pulse`, body keeps last valid content<br>• **content-script error** — extension can't reach the page → top `animate-slide-down` banner "Content script not loaded — refresh the localhost page and try again"<br>• **result-failure** — Claude returned `success: false` → `ProcessingStatus` failure variant with reason + Try Again | Error-tinted copy, never coloured-only — icon + label + colour together | WS reconnects / user reloads page / user clicks Try Again |
+| **Error**     | Five distinct failure sources:<br>• **disconnected** — WS not connected → `StatusGuide` explaining how to start `@inspatch/server`<br>• **reconnecting** — transient drop → chip pulses `--ip-warning` + `animate-pulse`, body keeps last valid content<br>• **content-script error** — extension can't reach the page → top `animate-slide-down` banner "Content script not loaded — refresh the page and try again"<br>• **file-URL permission missing** — active tab is `file://` and `fileUrlPermission === false` → inline guidance banner above the body (not transient) with copy-able `chrome://extensions/?id=<id>` instructions; Inspect button disabled until the user enables the toggle and reopens the panel (FR-28)<br>• **result-failure** — Claude returned `success: false` → `ProcessingStatus` failure variant with reason + Try Again | Error-tinted copy, never coloured-only — icon + label + colour together | WS reconnects / user reloads page / user enables "Allow access to file URLs" / user clicks Try Again |
 
 ## Copy
 
@@ -110,7 +112,13 @@ Vertical stack, full height, fixed header + footer, scrolling body. Page archety
 | Failure guidance     | `Try a simpler change description, or increase the server timeout.` / `The request was cancelled. Try again when ready.` / `Check the server terminal for details…` | Branches by error keyword |
 | Console-error tray   | `⚠ {n} console error(s) — will be sent to Claude` | `--ip-error` |
 | No-source warning    | `No source file detected — changes may require manual file lookup. Ensure your dev server has source maps enabled.` | `--ip-warning` |
-| Content-script error | `Content script not loaded — refresh the localhost page and try again` | Transient top banner |
+| Content-script error | `Content script not loaded — refresh the page and try again` | Transient top banner |
+| ElementCard source label · localhost | `{componentName}` in `--ip-text-accent` mono + source path line below | Shown when `pageSource === 'localhost'` |
+| ElementCard source label · file      | `Local HTML file` pill (11px, `--ip-text-secondary`) + absolute `filePath` below in mono, truncated with `title` tooltip | Shown when `pageSource === 'file'`; replaces the component-name segment |
+| Permission banner · title | `Enable file:// access to inspect this page` | `--ip-warning` icon + `text-[13px] font-semibold` |
+| Permission banner · body  | `Open chrome://extensions/?id={extensionId}, find Inspatch, and enable "Allow access to file URLs". Reopen this panel after.` | `text-[12px] --ip-text-muted`; the `chrome://` string is rendered in a mono code chip with a copy-to-clipboard button (Chrome extensions cannot navigate `chrome://` URLs) |
+| Permission banner · copy button | `Copy link` | After copy → `Copied` for 1.5s |
+| Result · diffMode badge · snapshot   | `snapshot diff` pill next to the result-card header | 10px mono, `--ip-text-muted`; only shown when `changeResult.diffMode === 'snapshot'` (FR-29) |
 
 ## Responsive Behavior
 
@@ -139,7 +147,8 @@ The side panel width is user-resizable via Chrome's built-in gripper (roughly 30
 
 ## Edge Cases
 
-- Active tab flips to a non-localhost URL mid-session → body swaps to the `non-localhost-blocked` screen; header remains (connection chip neutralised). Pending requests continue server-side and resurface when the user returns to a localhost tab.
+- Active tab flips to an unsupported URL mid-session (http(s) non-localhost) → body swaps to the `non-localhost-blocked` screen; header remains (connection chip neutralised). Pending requests continue server-side and resurface when the user returns to a supported tab.
+- Active tab flips to `file://` → body stays on `side-panel-main`; if `fileUrlPermission === false`, the permission banner appears above the body and Inspect is disabled. Component-name fields in any subsequent `ElementCard` are empty by design — see [./inspect-overlay.md](./inspect-overlay.md) DOM-only mode.
 - Server restart while a request is in flight → on reconnect, `resume` is sent; server replies `resume_not_found`; the panel clears pending state and returns to idle. No ghost "processing" card.
 - Page reloads on the *inspected* tab (not others) → element + processing + result state reset; other tabs do not cause a reset (`inspectTabId` check).
 - Long XPath / long file path → truncate with CSS, full value on `title` tooltip. Source path over 3 segments is shown as `…/last/three/parts`.
@@ -162,6 +171,8 @@ No analytics instrumentation (per PRD: zero-upload promise). Whether telemetry i
 - Should `prefers-reduced-motion` gate `animate-shimmer`, `animate-glow-pulse`, `animate-ping`, and `animate-spin`?
 - Replace `title` attributes with `aria-label` on all icon-only buttons (Stop, X, Send, Remove image, Reconnect chip)?
 - Should the result card receive focus or an `aria-live="polite"` region so SR users are notified on completion?
+- On `file://` pages, should the suggestion chip row swap to HTML-centric prompts ("inline this stylesheet", "add a favicon link", "fix meta viewport") instead of the React-leaning defaults?
+- Should the permission banner also appear once on localhost pages if the extension detects a recent `file://` attempt was blocked, as a proactive nudge?
 
 ## Out of Scope
 

@@ -9,17 +9,17 @@ patterns from docs/ui.md. Every token/value below is a reference to ui.md.
 
 - **Base UI doc:** [../ui.md](../ui.md) — design system, tokens, shared patterns
 - **PRD:** [../prd.md](../prd.md) — upstream requirements and user stories
-- **Related FR(s):** FR-21
+- **Related FR(s):** FR-21, FR-24
 - **User story(ies):** Story 6
 
 ## Purpose
 
-When the active Chrome tab isn't a supported localhost URL, tell the user why Inspatch can't do anything here and how to get unblocked — without pretending the server is down or the onboarding hasn't been completed. First-time users (no `lastLocalhostUrl` yet) additionally see a `welcome` lede so the very first impression isn't a raw error surface.
+When the active Chrome tab is neither a supported localhost URL nor a local `file://` HTML page, tell the user why Inspatch can't do anything here and how to get unblocked — without pretending the server is down or the onboarding hasn't been completed. First-time users (no `lastLocalhostUrl` yet) additionally see a `welcome` lede so the very first impression isn't a raw error surface.
 
 ## Entry & Exit
 
-- **Entry points:** user opens the side panel on a tab whose URL host is not `localhost` / `127.0.0.1` / `*.local`; or the user switches to such a tab while the panel is open.
-- **Exit points:** user switches to a localhost tab (panel flips back to `side-panel-main`); user clicks the primary `Open localhost:3000` action (opens the last-known localhost URL or a sensible default); user clicks the docs link (external page).
+- **Entry points:** user opens the side panel on a tab whose URL is neither (a) an http(s) URL with host `localhost` / `127.0.0.1` / `*.local` nor (b) a `file://` URL; or the user switches to such a tab while the panel is open. Note: `file://` pages are **not** blocked — they render the normal `side-panel-main` surface (see FR-24).
+- **Exit points:** user switches to a supported tab — localhost dev server or `file://` HTML (panel flips back to `side-panel-main`); user clicks the primary `Open localhost:3000` action (opens the last-known localhost URL or a sensible default); user clicks the docs link (external page).
 - **Primary user:** same frontend engineer as `side-panel-main`, on the wrong tab — or opening Inspatch for the first time on a non-localhost page.
 
 ## Layout
@@ -58,13 +58,13 @@ Vertical stack in the side-panel body; the header stays but its connection chip 
 
 | State     | When it shows | What the user sees | Exit condition |
 | --------- | ------------- | ------------------ | -------------- |
-| **Default**   | `activeTabUrl` host ∉ { localhost, 127.0.0.1, *.local } AND `lastLocalhostUrl` is known | Blocked card with icon + title + current URL (mono) + primary CTA showing the remembered URL host + secondary `See docs` + collapsed `Why?` | User switches tab → `side-panel-main`; or clicks CTA → tab navigates |
+| **Default**   | `activeTabUrl` is an http(s) URL with host ∉ { localhost, 127.0.0.1, *.local } AND `lastLocalhostUrl` is known. `file://` URLs never reach this state (see FR-24) | Blocked card with icon + title + current URL (mono) + primary CTA showing the remembered URL host + secondary `See docs` + collapsed `Why?` | User switches tab → `side-panel-main`; or clicks CTA → tab navigates |
 | **Hover**     | Pointer on any card / button / link | Primary CTA: `hover:brightness-110 hover:shadow-ip-glow-accent` (200ms); `See docs`: colour shifts `--ip-text-accent` → lighter; `Why?` toggle: underline | Pointer leaves |
 | **Active**    | Mousedown on primary CTA or `See docs` | `active:scale-95` on CTA (150ms); link flashes pressed tone | Mouseup |
 | **Focus**     | Keyboard focus on Primary CTA / secondary link / Why toggle | Global `*:focus-visible` 2px `--ip-border-accent` ring + `--ip-shadow-glow-accent` | Tab / click elsewhere |
 | **Disabled**  | `chrome.tabs` permission missing (install-time gate — unlikely in practice) | Primary CTA replaced by a non-clickable informational card; copy becomes `Open a localhost tab to start inspecting`; `See docs` still clickable | User grants permission and reloads |
 | **Loading**   | Moment between clicking the primary CTA and Chrome actually navigating the tab (sub-100ms typical) | CTA button briefly shows `opacity-70 pointer-events-none`; no spinner because navigation is fast | Tab navigates; panel flips to `side-panel-main` |
-| **Empty**     | **welcome variant** — first time the side panel is ever opened (no `lastLocalhostUrl`, no `hasOpenedBefore`) AND the tab is non-localhost | Welcome lede above the blocked card: `Welcome to Inspatch` + one-line pitch; primary CTA falls back to static `Open http://localhost:3000`; `Why?` auto-expands on this variant to teach context | User opens a localhost tab for the first time (writes both storage keys) |
+| **Empty**     | **welcome variant** — first time the side panel is ever opened (no `lastLocalhostUrl`, no `hasOpenedBefore`) AND the tab is http(s) non-localhost | Welcome lede above the blocked card: `Welcome to Inspatch` + one-line pitch; primary CTA falls back to static `Open http://localhost:3000`; `Why?` auto-expands on this variant to teach context | User opens a localhost tab or a `file://` HTML page for the first time (writes both storage keys) |
 | **Error**     | Remembered localhost URL no longer resolves (e.g. dev server stopped) — tab navigates and Chrome shows its own error page | Side panel still reads "non-localhost" and stays on this screen; blocked card gains a helper line `Last-used URL {host} didn't respond — start your dev server and retry` | User starts dev server and navigates manually, OR switches to a working localhost tab |
 
 ## Copy
@@ -73,13 +73,13 @@ Vertical stack in the side-panel body; the header stays but its connection chip 
 | -------------- | ---- | ----- |
 | Welcome lede · title        | `Welcome to Inspatch` | `text-[13px] font-semibold --ip-text-primary`; only in Empty state |
 | Welcome lede · body         | `Click any element on your localhost dev server, describe the change, and Claude edits your code — without leaving the browser.` | `text-[12px] --ip-text-muted` |
-| Heading                     | `Inspatch works on localhost only` | `text-[13px] font-semibold --ip-text-primary` |
-| Subheading                  | `Navigate to your local dev server to start inspecting` | `text-[12px] --ip-text-muted` |
+| Heading                     | `Inspatch works on local pages only` | `text-[13px] font-semibold --ip-text-primary`; "local" covers localhost dev servers and `file://` HTML files |
+| Subheading                  | `Navigate to your local dev server — or open a local HTML file — to start inspecting` | `text-[12px] --ip-text-muted` |
 | Current URL label           | `Current tab` | `text-[10px] --ip-text-muted tracking-wider` |
 | Primary CTA                 | `Open localhost:3000` (or remembered URL host) | Gradient CTA |
 | Secondary                   | `See docs` | Underlined link |
 | Why toggle                  | `Why?` | `text-[11px] --ip-text-accent` |
-| Why expanded                | `Inspatch edits source files on your machine. It only attaches to tabs served from localhost because that's where a dev server — and therefore your source — lives. Production sites have no local source to edit.` | 2–3 short lines |
+| Why expanded                | `Inspatch edits source files on your machine. It attaches to tabs served from localhost or opened as local HTML files because that's where your source lives. Remote / production sites have no local source to edit.` | 2–3 short lines |
 | Error helper (last URL dead) | `Last-used URL {host} didn't respond — start your dev server and retry.` | `text-[11px] --ip-text-muted` |
 | Disabled fallback           | `Open a localhost tab to start inspecting` | Shown instead of the CTA when `chrome.tabs` permission is missing |
 
@@ -110,7 +110,8 @@ Inherits the parent side-panel width range. No breakpoint logic; all text wraps.
 ## Edge Cases
 
 - `chrome.tabs` permission missing → Disabled state (fallback copy, no primary CTA).
-- Active tab is `chrome://` or `about:` page → treat as non-localhost; same blocked state applies.
+- Active tab is `chrome://` or `about:` page → treat as blocked; same state applies.
+- Active tab is `file://` → **not** blocked; the side panel renders `side-panel-main` instead (see FR-24). This screen is never shown for `file://`.
 - Remembered localhost URL no longer resolves → tab navigates and fails; Chrome's own error page handles it — side panel still shows blocked until user navigates to a working URL. See Error state.
 - User has the side panel pinned across many tabs and rapidly switches → blocked state toggles per-tab; no flicker because the body swap uses `animate-fade-in`, 250ms.
 - First-time install on a non-localhost tab → Empty (welcome) state; once the user opens any localhost tab, `hasOpenedBefore` is set and future returns use the Default state (no welcome lede).

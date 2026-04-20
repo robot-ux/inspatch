@@ -7,6 +7,7 @@ import {
   type ClipboardEvent,
   type KeyboardEvent,
 } from "react";
+import type { ChangeMode } from "@inspatch/shared";
 import { PaperclipIcon, SendIcon, XIcon } from "./icons";
 
 interface Attachment {
@@ -15,9 +16,14 @@ interface Attachment {
 }
 
 interface ChangeInputProps {
-  onSend: (description: string, imageDataUrl?: string) => void;
+  onSend: (description: string, imageDataUrl?: string, mode?: ChangeMode) => void;
   disabled?: boolean;
 }
+
+const MODE_LABELS: Record<ChangeMode, { label: string; hint: string }> = {
+  quick: { label: "Quick", hint: "Apply directly · Claude escalates risky changes" },
+  discuss: { label: "Discuss", hint: "Plan first · review before applying" },
+};
 
 const SUGGESTIONS: readonly string[] = [
   "Tighten spacing",
@@ -41,6 +47,7 @@ function readImageFromFile(file: File): Promise<string> {
 export function ChangeInput({ onSend, disabled = false }: ChangeInputProps) {
   const [value, setValue] = useState("");
   const [attachments, setAttachments] = useState<Attachment[]>([]);
+  const [mode, setMode] = useState<ChangeMode>("quick");
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -63,7 +70,7 @@ export function ChangeInput({ onSend, disabled = false }: ChangeInputProps) {
   const handleSend = useCallback(() => {
     if (!canSend) return;
     const first = attachments[0]?.dataUrl;
-    onSend(trimmed || "(see attached screenshot)", first);
+    onSend(trimmed || "(see attached screenshot)", first, mode);
     setValue("");
     setAttachments([]);
     requestAnimationFrame(() => {
@@ -73,7 +80,7 @@ export function ChangeInput({ onSend, disabled = false }: ChangeInputProps) {
         el.style.overflowY = "hidden";
       }
     });
-  }, [canSend, trimmed, attachments, onSend]);
+  }, [canSend, trimmed, attachments, mode, onSend]);
 
   const handleKeyDown = useCallback(
     (e: KeyboardEvent<HTMLTextAreaElement>) => {
@@ -215,6 +222,21 @@ export function ChangeInput({ onSend, disabled = false }: ChangeInputProps) {
       </div>
 
       <div className="-mx-1 mt-1.5 flex items-center gap-1.5 overflow-x-auto px-1 pb-0.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+        <button
+          type="button"
+          onClick={() => setMode((m) => (m === "quick" ? "discuss" : "quick"))}
+          disabled={disabled}
+          title={MODE_LABELS[mode].hint}
+          aria-label={`Mode: ${MODE_LABELS[mode].label}. Click to switch.`}
+          className={`h-6 flex-shrink-0 whitespace-nowrap rounded-full border px-2 text-[11px] font-medium transition-all duration-150 active:scale-95 disabled:cursor-not-allowed disabled:opacity-40 ${
+            mode === "quick"
+              ? "border-ip-border-accent bg-ip-bg-tertiary/70 text-ip-text-accent"
+              : "border-[rgba(163,166,255,0.40)] bg-ip-info-muted text-ip-info"
+          }`}
+        >
+          {mode === "quick" ? "⚡ Quick" : "💬 Discuss"}
+        </button>
+        <div className="h-4 w-px flex-shrink-0 bg-ip-border-subtle" />
         {SUGGESTIONS.map((text) => (
           <button
             key={text}

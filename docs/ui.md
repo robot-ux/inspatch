@@ -9,7 +9,7 @@ Screen detail lives under ./screens/<slug>.md — one file per screen.
 
 ## Overview
 
-- **Product / Feature:** Inspatch — Chrome extension side panel + injected inspect overlay for localhost React apps
+- **Product / Feature:** Inspatch — Chrome extension side panel + injected inspect overlay for localhost React apps **and local HTML files (`file://`)**
 - **Framework:** React 19 + Tailwind CSS v4 (via `@tailwindcss/vite`), built with WXT (Chrome MV3)
 - **Platforms:** Chrome desktop (Chromium ≥ the version WXT targets). No mobile.
 - **Designer:** Inspatch core team (design-in-code)
@@ -158,16 +158,17 @@ Unused / not applicable: **Modal** (no blocking dialogs — all feedback is inli
 ├── <Side Panel (chrome.sidePanel)>
 │   ├── <HeaderBar>                 # inspect toggle (compact) · connection chip
 │   ├── <Body> (one of)
-│   │   ├── <NotLocalhost>          # non-localhost tab
+│   │   ├── <NotLocalhost>          # unsupported tab (http(s) non-localhost; file:// is allowed)
+│   │   ├── <FileUrlPermissionBanner?> # file:// page without "Allow access to file URLs"; sits above the body content
 │   │   ├── <StatusGuide>           # disconnected / reconnecting
 │   │   ├── <OnboardingSteps + CTA> # connected, first run
 │   │   ├── <EmptyState: inspecting>
 │   │   ├── <EmptyState: idle>      # after first run, no selection
-│   │   └── <ElementCard + (ProcessingStatus | ResultCard)?>
+│   │   └── <ElementCard + (ProcessingStatus | ResultCard)?>  # ElementCard has two variants: React (componentName) vs. Local HTML file (filePath)
 │   ├── <ConsoleErrorTray?>         # bottom, when errors buffered
 │   └── <ChangeInput>               # bottom, after element selected
-└── <Inspected Page — overlay injected by content script>
-    └── <BoxModelOverlay>           # margin · border · padding · content layers + tooltip
+└── <Inspected Page — overlay injected by content script>  # localhost dev server or file:// HTML page
+    └── <BoxModelOverlay>           # margin · border · padding · content layers + tooltip (tooltip omits componentName on file://)
 ```
 
 Non-UI surfaces (not in the side-panel IA):

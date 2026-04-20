@@ -13,6 +13,11 @@ export const BoundingRectSchema = z.object({
   height: z.number(),
 });
 
+// "localhost" = React/localhost dev server page (fiber enrichment available).
+// "file" = page loaded via file:// protocol (DOM-only; no fiber, no sourcemaps).
+export const PageSourceSchema = z.enum(["localhost", "file"]);
+export type PageSource = z.infer<typeof PageSourceSchema>;
+
 export const ElementSelectionSchema = z.object({
   type: z.literal("element_selection"),
   tagName: z.string(),
@@ -27,6 +32,10 @@ export const ElementSelectionSchema = z.object({
   sourceColumn: z.number().optional(),
   devicePixelRatio: z.number().default(1),
   computedStyles: z.record(z.string(), z.string()).optional(),
+  // Defaults to "localhost" so existing clients behave unchanged.
+  pageSource: PageSourceSchema.default("localhost"),
+  // Absolute path of the HTML file when pageSource === "file"; unset otherwise.
+  filePath: z.string().optional(),
 });
 
 export const ConsoleErrorSchema = z.object({
@@ -34,6 +43,11 @@ export const ConsoleErrorSchema = z.object({
   stack: z.string().optional(),
   timestamp: z.number(),
 });
+
+// "quick"   = apply edits directly; auto-escalate to a plan only on risky changes.
+// "discuss" = never edit; return a plan and wait for explicit approval.
+export const ChangeModeSchema = z.enum(["quick", "discuss"]);
+export type ChangeMode = z.infer<typeof ChangeModeSchema>;
 
 export const ChangeRequestSchema = z.object({
   type: z.literal("change_request"),
@@ -49,6 +63,24 @@ export const ChangeRequestSchema = z.object({
   boundingRect: BoundingRectSchema.optional(),
   computedStyles: z.record(z.string(), z.string()).optional(),
   consoleErrors: z.array(ConsoleErrorSchema).optional(),
+  pageSource: PageSourceSchema.default("localhost"),
+  filePath: z.string().optional(),
+  mode: ChangeModeSchema.default("quick"),
+});
+
+// Server → extension. Sent when Claude produced a plan instead of an edit
+// (either because mode was "discuss" or because quick-mode auto-escalated).
+export const PlanProposalSchema = z.object({
+  type: z.literal("plan_proposal"),
+  requestId: z.string(),
+  plan: z.string().min(1),
+});
+
+// Extension → server. User's decision on a previously-sent plan_proposal.
+export const PlanApprovalSchema = z.object({
+  type: z.literal("plan_approval"),
+  requestId: z.string(),
+  approve: z.boolean(),
 });
 
 export const StatusUpdateSchema = z.object({
@@ -60,11 +92,18 @@ export const StatusUpdateSchema = z.object({
   streamText: z.string().optional(),
 });
 
+// "git" = diff produced by `git diff` inside a Git repo.
+// "snapshot" = diff produced by comparing pre-run snapshots via `git diff --no-index`
+// (used when the project isn't a Git working tree).
+export const DiffModeSchema = z.enum(["git", "snapshot"]);
+export type DiffMode = z.infer<typeof DiffModeSchema>;
+
 export const ChangeResultSchema = z.object({
   type: z.literal("change_result"),
   requestId: z.string().optional(),
   success: z.boolean(),
   diff: z.string().optional(),
+  diffMode: DiffModeSchema.optional(),
   filesModified: z.array(z.string()).optional(),
   summary: z.string().optional(),
   error: z.string().optional(),
@@ -95,6 +134,8 @@ export const MessageSchema = z.discriminatedUnion("type", [
   ChangeResultSchema,
   ResumeRequestSchema,
   ResumeNotFoundSchema,
+  PlanProposalSchema,
+  PlanApprovalSchema,
 ]);
 
 export type ConnectionStatus = z.infer<typeof ConnectionStatusSchema>;
@@ -105,6 +146,8 @@ export type StatusUpdate = z.infer<typeof StatusUpdateSchema>;
 export type ChangeResult = z.infer<typeof ChangeResultSchema>;
 export type ResumeRequest = z.infer<typeof ResumeRequestSchema>;
 export type ResumeNotFound = z.infer<typeof ResumeNotFoundSchema>;
+export type PlanProposal = z.infer<typeof PlanProposalSchema>;
+export type PlanApproval = z.infer<typeof PlanApprovalSchema>;
 export type Message = z.infer<typeof MessageSchema>;
 
 export const PingSchema = z.object({ type: z.literal("ping") });

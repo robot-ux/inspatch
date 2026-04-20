@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type {
+  ChangeMode,
   ChangeRequest,
   ChangeResult,
   ConsoleError,
   ElementSelection,
+  PageSource,
   StatusUpdate,
 } from "@inspatch/shared";
 
@@ -17,14 +19,34 @@ const SERVER_HTTP = "http://localhost:9377";
 const pendingKey = (tabId: number) => `pending_${tabId}`;
 
 type InspectState = "idle" | "inspecting";
+type UrlKind = "localhost" | "file" | "other";
 
-function isLocalhostUrl(url: string | undefined): boolean {
-  if (!url) return false;
+function classifyUrl(url: string | undefined): UrlKind {
+  if (!url) return "other";
   try {
     const u = new URL(url);
-    return u.hostname === "localhost" || u.hostname === "127.0.0.1" || u.hostname === "[::1]";
+    if (u.protocol === "file:") return "file";
+    if (u.hostname === "localhost" || u.hostname === "127.0.0.1" || u.hostname === "[::1]") {
+      return "localhost";
+    }
+    return "other";
   } catch {
-    return false;
+    return "other";
+  }
+}
+
+async function checkFileUrlPermission(): Promise<boolean> {
+  // chrome.extension.isAllowedFileSchemeAccess is still supported in MV3 and
+  // is the only reliable way to detect whether the user has toggled
+  // "Allow access to file URLs" for this extension.
+  const api = (chrome as unknown as {
+    extension?: { isAllowedFileSchemeAccess?: () => Promise<boolean> };
+  }).extension;
+  if (!api?.isAllowedFileSchemeAccess) return true;
+  try {
+    return await api.isAllowedFileSchemeAccess();
+  } catch {
+    return true;
   }
 }
 
@@ -44,12 +66,15 @@ export default function App() {
   const [transientError, setTransientError] = useState<string | null>(null);
   const [processing, setProcessing] = useState<StatusUpdate | null>(null);
   const [changeResult, setChangeResult] = useState<ChangeResult | null>(null);
+  const [pendingPlan, setPendingPlan] = useState<string | null>(null);
   const [streamedText, setStreamedText] = useState("");
   const [statusLog, setStatusLog] = useState<string[]>([]);
   const [consoleErrors, setConsoleErrors] = useState<ConsoleError[]>([]);
-  const [isLocalhost, setIsLocalhost] = useState(true);
+  const [urlKind, setUrlKind] = useState<UrlKind>("localhost");
   const [currentTabUrl, setCurrentTabUrl] = useState<string | undefined>(undefined);
   const [hasUsedInspect, setHasUsedInspect] = useState(false);
+  const [fileUrlPermission, setFileUrlPermission] = useState(true);
+  const [extensionId, setExtensionId] = useState<string>("");
 
   const activeRequestId = useRef<string | null>(null);
   const activeTabId = useRef<number | null>(null);
@@ -70,11 +95,21 @@ export default function App() {
       if (activeRequestId.current && cr.requestId && cr.requestId !== activeRequestId.current) return;
       setChangeResult(cr);
       setProcessing(null);
+      setPendingPlan(null);
       activeRequestId.current = null;
       if (activeTabId.current) chrome.storage.local.remove(pendingKey(activeTabId.current));
+    } else if (lastMessage.type === "plan_proposal") {
+      const pp = lastMessage;
+      if (activeRequestId.current && pp.requestId !== activeRequestId.current) return;
+      // Plan-only outcome: show the plan card, keep processing paused, keep the
+      // requestId active so plan_approval lands on the same request.
+      setPendingPlan(pp.plan);
+      setProcessing(null);
+      setStreamedText("");
     } else if (lastMessage.type === "resume_not_found") {
       if (activeTabId.current) chrome.storage.local.remove(pendingKey(activeTabId.current));
       setProcessing(null);
+      setPendingPlan(null);
       setSelectedElement(null);
       setHasUsedInspect(false);
       activeRequestId.current = null;
@@ -91,9 +126,32 @@ export default function App() {
     try {
       return await chrome.tabs.sendMessage(tab.id, message);
     } catch {
-      setTransientError("Content script not loaded — refresh the localhost page and try again");
+      // Content script missing has two distinct causes on file:// pages:
+      //   1. "Allow access to file URLs" is still off → the banner is showing.
+      //   2. Permission is on, but the tab was loaded before Inspatch was last
+      //      reloaded or before the permission was flipped on → reload the tab.
+      // Re-checking permission here (instead of trusting state) makes the hint
+      // accurate even if the user just toggled the switch.
+      const kind = classifyUrl(tab.url);
+      if (kind === "file") {
+        const allowed = await checkFileUrlPermission();
+        setFileUrlPermission(allowed);
+        setTransientError(
+          allowed
+            ? "Can't reach the page. Reload this tab — Inspatch was reloaded after the tab opened."
+            : "Can't reach the page. Enable \"Allow access to file URLs\" (see banner), then reload this tab.",
+        );
+      } else {
+        setTransientError(
+          "Content script not loaded — reload this tab (Inspatch was likely reloaded after the tab opened).",
+        );
+      }
       throw new Error("Content script not available");
     }
+  }, []);
+
+  useEffect(() => {
+    setExtensionId(chrome.runtime?.id ?? "");
   }, []);
 
   useEffect(() => {
@@ -134,12 +192,18 @@ export default function App() {
       }
       if (tab?.id) activeTabId.current = tab.id;
       setCurrentTabUrl(tab?.url);
-      if (tab?.url?.startsWith("http")) {
-        const localhost = isLocalhostUrl(tab.url);
-        setIsLocalhost(localhost);
-        if (localhost) firstRun.markOpenedWithLocalhost(tab.url);
-      } else if (!tab?.url) {
-        setIsLocalhost(false);
+
+      const kind = classifyUrl(tab?.url);
+      setUrlKind(kind);
+      if (kind === "localhost" && tab?.url) {
+        firstRun.markOpenedWithLocalhost(tab.url);
+      }
+      // file:// pages require the "Allow access to file URLs" toggle.
+      // Re-check every tab switch so the banner clears the moment the user flips it on.
+      if (kind === "file") {
+        setFileUrlPermission(await checkFileUrlPermission());
+      } else {
+        setFileUrlPermission(true);
       }
     };
     checkTab();
@@ -188,6 +252,7 @@ export default function App() {
       setTransientError(null);
       setProcessing(null);
       setChangeResult(null);
+      setPendingPlan(null);
       setStreamedText("");
       setConsoleErrors([]);
       setStatusLog([]);
@@ -234,6 +299,7 @@ export default function App() {
     setSelectedElement(null);
     setProcessing(null);
     setChangeResult(null);
+    setPendingPlan(null);
     setStreamedText("");
     setStatusLog([]);
     setConsoleErrors([]);
@@ -259,15 +325,17 @@ export default function App() {
   }, [sendToContentScript]);
 
   const handleSendChange = useCallback(
-    (description: string, imageDataUrl?: string) => {
+    (description: string, imageDataUrl?: string, mode: ChangeMode = "quick") => {
       if (!selectedElement) return;
       const requestId = crypto.randomUUID();
       activeRequestId.current = requestId;
       setProcessing(null);
       setChangeResult(null);
+      setPendingPlan(null);
       setStreamedText("");
       setStatusLog([]);
 
+      const pageSource: PageSource = selectedElement.pageSource ?? "localhost";
       const changeRequest: ChangeRequest = {
         type: "change_request",
         requestId,
@@ -282,6 +350,9 @@ export default function App() {
         boundingRect: selectedElement.boundingRect,
         computedStyles: selectedElement.computedStyles,
         consoleErrors: consoleErrors.length > 0 ? consoleErrors : undefined,
+        pageSource,
+        filePath: selectedElement.filePath,
+        mode,
       };
       send(changeRequest);
       if (activeTabId.current) {
@@ -294,9 +365,38 @@ export default function App() {
     [selectedElement, consoleErrors, send],
   );
 
+  const handleApprovePlan = useCallback(() => {
+    const requestId = activeRequestId.current;
+    if (!requestId) return;
+    setPendingPlan(null);
+    setStatusLog([]);
+    setStreamedText("");
+    setProcessing({
+      type: "status_update",
+      requestId,
+      status: "applying",
+      message: "Executing approved plan…",
+    });
+    send({ type: "plan_approval", requestId, approve: true });
+  }, [send]);
+
+  const handleCancelPlan = useCallback(() => {
+    const requestId = activeRequestId.current;
+    if (requestId) {
+      send({ type: "plan_approval", requestId, approve: false });
+    }
+    setPendingPlan(null);
+    setProcessing(null);
+    setStatusLog([]);
+    setStreamedText("");
+    activeRequestId.current = null;
+    if (activeTabId.current) chrome.storage.local.remove(pendingKey(activeTabId.current));
+  }, [send]);
+
   const handleRetry = useCallback(() => {
     setProcessing(null);
     setChangeResult(null);
+    setPendingPlan(null);
     setStreamedText("");
     setStatusLog([]);
     activeRequestId.current = null;
@@ -304,7 +404,7 @@ export default function App() {
 
   const handleClearConsoleErrors = useCallback(() => setConsoleErrors([]), []);
 
-  if (!isLocalhost) {
+  if (urlKind === "other") {
     const firstTime =
       firstRun.ready && !firstRun.hasOpenedBefore && !firstRun.lastLocalhostUrl;
     return (
@@ -327,16 +427,21 @@ export default function App() {
       selectedElement={selectedElement}
       processing={processing}
       changeResult={changeResult}
+      pendingPlan={pendingPlan}
       streamedText={streamedText}
       statusLog={statusLog}
       consoleErrors={consoleErrors}
       transientError={transientError}
+      showFileUrlBanner={urlKind === "file" && !fileUrlPermission}
+      extensionId={extensionId}
       onStartInspect={handleStartInspect}
       onStopInspect={handleStopInspect}
       onClear={handleClear}
       onElementHover={handleElementHover}
       onElementLeave={handleElementLeave}
       onSendChange={handleSendChange}
+      onApprovePlan={handleApprovePlan}
+      onCancelPlan={handleCancelPlan}
       onRetry={handleRetry}
       onClearConsoleErrors={handleClearConsoleErrors}
       onOpenSource={openInEditor}

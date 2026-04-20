@@ -4,6 +4,8 @@ import {
   ConnectionStatusSchema,
   ElementSelectionSchema,
   ChangeRequestSchema,
+  PlanProposalSchema,
+  PlanApprovalSchema,
   parseMessage,
 } from "./schemas";
 
@@ -74,6 +76,28 @@ describe("ElementSelectionSchema", () => {
       expect(result.data.devicePixelRatio).toBe(1);
     }
   });
+
+  test("defaults pageSource to \"localhost\" when omitted", () => {
+    const result = ElementSelectionSchema.safeParse(baseSelection);
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.pageSource).toBe("localhost");
+    }
+  });
+
+  test("accepts pageSource=\"file\" with filePath", () => {
+    const msg = {
+      ...baseSelection,
+      pageSource: "file",
+      filePath: "/Users/me/site/index.html",
+    };
+    const result = ElementSelectionSchema.safeParse(msg);
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.pageSource).toBe("file");
+      expect(result.data.filePath).toBe("/Users/me/site/index.html");
+    }
+  });
 });
 
 describe("ChangeRequestSchema new fields", () => {
@@ -96,6 +120,85 @@ describe("ChangeRequestSchema new fields", () => {
       elementXpath: "/html/body/div",
     };
     expect(ChangeRequestSchema.safeParse(msg).success).toBe(true);
+  });
+});
+
+describe("ChangeRequestSchema mode field", () => {
+  test("defaults mode to \"quick\" when omitted", () => {
+    const msg = {
+      type: "change_request",
+      description: "Make it red",
+      elementXpath: "/html/body/div",
+    };
+    const result = ChangeRequestSchema.safeParse(msg);
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.mode).toBe("quick");
+    }
+  });
+
+  test("accepts mode=\"discuss\"", () => {
+    const msg = {
+      type: "change_request",
+      description: "Rework this card",
+      elementXpath: "/html/body/div",
+      mode: "discuss",
+    };
+    const result = ChangeRequestSchema.safeParse(msg);
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.mode).toBe("discuss");
+    }
+  });
+
+  test("rejects unknown mode values", () => {
+    const msg = {
+      type: "change_request",
+      description: "Make it red",
+      elementXpath: "/html/body/div",
+      mode: "yolo",
+    };
+    expect(ChangeRequestSchema.safeParse(msg).success).toBe(false);
+  });
+});
+
+describe("PlanProposalSchema", () => {
+  test("accepts valid plan_proposal", () => {
+    const msg = {
+      type: "plan_proposal",
+      requestId: "abc-123",
+      plan: "## Plan\n**Goal:** rework layout",
+    };
+    expect(PlanProposalSchema.safeParse(msg).success).toBe(true);
+    expect(MessageSchema.safeParse(msg).success).toBe(true);
+  });
+
+  test("rejects empty plan", () => {
+    const msg = { type: "plan_proposal", requestId: "abc-123", plan: "" };
+    expect(PlanProposalSchema.safeParse(msg).success).toBe(false);
+  });
+
+  test("rejects missing requestId", () => {
+    const msg = { type: "plan_proposal", plan: "## Plan" };
+    expect(PlanProposalSchema.safeParse(msg).success).toBe(false);
+  });
+});
+
+describe("PlanApprovalSchema", () => {
+  test("accepts approve=true", () => {
+    const msg = { type: "plan_approval", requestId: "abc-123", approve: true };
+    expect(PlanApprovalSchema.safeParse(msg).success).toBe(true);
+    expect(MessageSchema.safeParse(msg).success).toBe(true);
+  });
+
+  test("accepts approve=false", () => {
+    const msg = { type: "plan_approval", requestId: "abc-123", approve: false };
+    expect(PlanApprovalSchema.safeParse(msg).success).toBe(true);
+  });
+
+  test("rejects missing approve", () => {
+    const msg = { type: "plan_approval", requestId: "abc-123" };
+    expect(PlanApprovalSchema.safeParse(msg).success).toBe(false);
   });
 });
 

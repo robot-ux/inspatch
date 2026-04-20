@@ -90,6 +90,12 @@ export function createServer(port: number, projectDir: string, editor: EditorSch
           return;
         }
 
+        if (msg.type === "plan_approval") {
+          logger.info(`Plan ${msg.approve ? "approved" : "cancelled"} by ${ws.data.id}: ${msg.requestId}`);
+          queue.handleApproval(msg.requestId, msg.approve, ws);
+          return;
+        }
+
         logger.info(`Received ${msg.type} from ${ws.data.id}`);
       },
       close(ws, code, reason) {

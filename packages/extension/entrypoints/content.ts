@@ -9,12 +9,21 @@ import { clearSourceMapCache } from './content/source-resolver';
 const logger = createLogger('content');
 
 export default defineContentScript({
-  matches: ['http://localhost/*'],
+  // Match both localhost (React dev servers) and file:// pages (hand-edited HTML).
+  // Fiber / console bridges only run on localhost — see isFileUrl branching below.
+  matches: ['http://localhost/*', 'file:///*'],
   main(ctx) {
     logger.debug('Content script loaded on', location.href);
 
-    initFiberBridge().catch(() => {});
-    const cleanupConsole = initConsoleBridge();
+    const isFileUrl = location.protocol === 'file:';
+
+    let cleanupConsole: (() => void) | null = null;
+    if (!isFileUrl) {
+      initFiberBridge().catch(() => {});
+      cleanupConsole = initConsoleBridge();
+    } else {
+      logger.debug('file:// page — DOM-only mode (Fiber/console bridges disabled)');
+    }
 
     const { host, shadow } = createOverlayHost();
     const layers = createOverlayLayers(shadow);
@@ -39,7 +48,7 @@ export default defineContentScript({
       logger.debug('Content script invalidated');
       inspectMode.stop();
       cleanupMessaging();
-      cleanupConsole();
+      cleanupConsole?.();
       clearSourceMapCache();
       host.remove();
     });

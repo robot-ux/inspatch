@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
-import { resolve } from 'path';
-import { existsSync } from 'fs';
+import { resolve, dirname } from 'path';
+import { existsSync, statSync } from 'fs';
 import { createLogger } from '@inspatch/shared';
 import {
   createServer,
@@ -22,7 +22,8 @@ Usage:
   npx @inspatch/server <dir> [options]
 
 Options:
-  -p, --project <dir>      Target project directory (required)
+  -p, --project <path>     Target project directory, or path to an HTML file
+                           (the file's parent directory becomes the project root)
   --port <number>          WebSocket port (default: ${DEFAULT_PORT})
   --editor <cursor|vscode> Editor to open files in (default: auto-detect)
   --timeout <seconds>      Claude runner timeout in seconds (default: 1800)
@@ -31,6 +32,7 @@ Options:
 Example:
   npx @inspatch/server .
   npx @inspatch/server ./my-react-app
+  npx @inspatch/server ./static-site/index.html
   npx @inspatch/server /Users/me/app --editor cursor
   npx @inspatch/server /Users/me/app --timeout 3600
 `);
@@ -74,12 +76,26 @@ function getProjectDir(): string {
     printHelp();
     process.exit(0);
   }
-  const dir = resolve(raw);
-  if (!existsSync(dir)) {
-    logger.error(`Project directory does not exist: ${dir}`);
+  const target = resolve(raw);
+  if (!existsSync(target)) {
+    logger.error(`Project path does not exist: ${target}`);
     process.exit(1);
   }
-  return dir;
+  const stat = statSync(target);
+  if (stat.isFile()) {
+    if (!/\.html?$/i.test(target)) {
+      logger.error(`Only .html/.htm files are accepted as a file target. Got: ${target}`);
+      process.exit(1);
+    }
+    const parent = dirname(target);
+    logger.info(`HTML file target — using parent directory as project: ${parent}`);
+    return parent;
+  }
+  if (!stat.isDirectory()) {
+    logger.error(`Project path must be a directory or an .html file: ${target}`);
+    process.exit(1);
+  }
+  return target;
 }
 
 function getEditor(): Promise<EditorScheme> {

@@ -158,11 +158,23 @@ function SuccessCard({ result, onOpenSource }: SuccessCardProps) {
 
   return (
     <div className="animate-fade-in-scale space-y-2 rounded-ip-lg border border-[rgba(197,255,201,0.30)] bg-ip-success-muted p-4">
-      {result.summary ? (
-        <ReactMarkdown components={mdComponents}>{result.summary}</ReactMarkdown>
-      ) : (
-        <span className="text-[13px] font-semibold text-ip-success">Changes applied</span>
-      )}
+      <div className="flex items-start justify-between gap-2">
+        <div className="min-w-0 flex-1">
+          {result.summary ? (
+            <ReactMarkdown components={mdComponents}>{result.summary}</ReactMarkdown>
+          ) : (
+            <span className="text-[13px] font-semibold text-ip-success">Changes applied</span>
+          )}
+        </div>
+        {result.diffMode === "snapshot" && (
+          <span
+            title="Diff computed by comparing pre-run snapshots (project isn't a Git repo)"
+            className="shrink-0 rounded-ip-sm border border-[rgba(163,166,255,0.40)] px-1.5 py-0.5 font-code text-[10px] uppercase tracking-wide text-ip-info"
+          >
+            snapshot diff
+          </span>
+        )}
+      </div>
 
       {result.filesModified && result.filesModified.length > 0 && (
         <div className="space-y-1">

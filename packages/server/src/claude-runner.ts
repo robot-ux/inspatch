@@ -1,6 +1,12 @@
 import { query, type SDKMessage, type SDKUserMessage } from "@anthropic-ai/claude-agent-sdk";
 import type { ChangeRequest } from "@inspatch/shared";
 import { createLogger } from "@inspatch/shared";
+import {
+  APPROVED_PLAN_PREFIX,
+  DISCUSS_MODE_NOTE,
+  INSPATCH_SYSTEM_PROMPT,
+  QUICK_MODE_NOTE,
+} from "./prompts";
 
 const logger = createLogger("claude");
 
@@ -10,19 +16,36 @@ export interface StatusCallback {
 
 export interface RunResult {
   success: boolean;
+  // When the run ended with a plan (either discuss mode or quick-mode auto-escalation),
+  // `plan` holds the extracted `## Plan` text and no files were modified.
+  plan?: string;
   resultText?: string;
   filesModified?: string[];
   summary?: string;
   error?: string;
 }
 
-function buildPromptText(req: ChangeRequest): string {
+// Plan-block extractor. Returns the `## Plan` section (without heading) if present.
+export function extractPlanBlock(text: string): string | null {
+  const match = text.match(/##\s*Plan\b\s*\n([\s\S]+?)(?:\n##\s|\n---|\s*$)/);
+  return match ? match[1].trim() : null;
+}
+
+function buildPromptText(req: ChangeRequest, approvedPlan?: string): string {
+  const isFile = req.pageSource === "file";
+
   const lines: string[] = [
-    "You are modifying a web application. The user selected an element on the page and wants to make a change.",
+    isFile
+      ? "You are modifying a local HTML file opened directly in the browser via file://. The user selected an element on the page and wants to make a change."
+      : "You are modifying a web application. The user selected an element on the page and wants to make a change.",
     "",
     "## Selected Element",
     `- XPath: ${req.elementXpath}`,
   ];
+
+  if (isFile && req.filePath) {
+    lines.push(`- HTML file: \`${req.filePath}\``);
+  }
 
   if (req.componentName) {
     let loc = `- Component: \`${req.componentName}\``;
@@ -61,6 +84,15 @@ function buildPromptText(req: ChangeRequest): string {
     lines.push("", "The user has also attached a screenshot of the element for visual reference.");
   }
 
+  // Mode note: tells Claude whether to apply edits or only output a plan.
+  // When resuming after an approved plan, the approved-plan block overrides the
+  // mode rules — Claude must just execute the plan.
+  if (approvedPlan) {
+    lines.push("", APPROVED_PLAN_PREFIX + approvedPlan);
+  } else {
+    lines.push("", req.mode === "discuss" ? DISCUSS_MODE_NOTE : QUICK_MODE_NOTE);
+  }
+
   if (req.consoleErrors?.length) {
     lines.push("", "## Console Errors");
     lines.push("The following errors are currently in the browser console:");
@@ -74,14 +106,33 @@ function buildPromptText(req: ChangeRequest): string {
     lines.push("", "Fix any of these errors that are related to the selected component or the user's request.");
   }
 
+  lines.push("", "## Instructions");
+
+  if (isFile) {
+    // DOM-only mode: no React, no sourcemaps. Claude locates the element by
+    // matching the XPath / classes / tag inside the HTML file, then edits the
+    // inline <style>, an imported CSS file, or the element's attributes.
+    const target = req.filePath ?? "the HTML file in the project";
+    lines.push(
+      `1. Open \`${target}\` first; that is the entry point the user is viewing`,
+      "2. Locate the element in the HTML by matching the XPath, tag name, id, and class list above",
+      "3. Apply the change by editing the HTML, inline `<style>` tags, or any CSS/JS files the page links to (all must live inside the project directory)",
+      "4. Do not introduce build tools, bundlers, or frameworks — this file is meant to be opened directly in the browser",
+      "5. Only modify what's needed — don't refactor unrelated code",
+      "6. Fix any related console errors from the list above if present",
+      "7. End your response with this exact block:",
+    );
+  } else {
+    lines.push(
+      "1. Find the source file and make the changes described by the user",
+      "2. Only modify what's needed — don't refactor unrelated code",
+      "3. If the source file path looks like a URL or relative to a dev server, search for it in the project",
+      "4. Fix any related console errors from the list above if present",
+      "5. End your response with this exact block:",
+    );
+  }
+
   lines.push(
-    "",
-    "## Instructions",
-    "1. Find the source file and make the changes described by the user",
-    "2. Only modify what's needed — don't refactor unrelated code",
-    "3. If the source file path looks like a URL or relative to a dev server, search for it in the project",
-    "4. Fix any related console errors from the list above if present",
-    "5. End your response with this exact block:",
     "",
     "## Summary",
     "**UI changes:** <what visually changed, or \"none\">",
@@ -92,8 +143,8 @@ function buildPromptText(req: ChangeRequest): string {
   return lines.join("\n");
 }
 
-function buildPrompt(req: ChangeRequest): string | AsyncIterable<SDKUserMessage> {
-  const text = buildPromptText(req);
+function buildPrompt(req: ChangeRequest, approvedPlan?: string): string | AsyncIterable<SDKUserMessage> {
+  const text = buildPromptText(req, approvedPlan);
 
   if (!req.screenshotDataUrl) {
     return text;
@@ -170,15 +221,26 @@ function extractToolInputDetail(msg: SDKMessage): string | null {
   return null;
 }
 
+export interface RunOptions {
+  signal?: AbortSignal;
+  timeoutMs?: number;
+  // Set when resuming after the user approved a plan from a previous run.
+  // Flips the prompt into "just execute this plan" mode regardless of req.mode.
+  approvedPlan?: string;
+}
+
 export async function runClaude(
   req: ChangeRequest,
   projectDir: string,
   onStatus: StatusCallback,
-  signal?: AbortSignal,
-  timeoutMs = 1_800_000,
+  options: RunOptions = {},
 ): Promise<RunResult> {
+  const { signal, timeoutMs = 1_800_000, approvedPlan } = options;
+  const discussOnly = req.mode === "discuss" && !approvedPlan;
+
   logger.info("Starting Claude Code SDK for:", req.description.slice(0, 100));
   logger.info(`Project dir: ${projectDir}`);
+  logger.info(`Mode: ${req.mode}${approvedPlan ? " (resuming with approved plan)" : ""}`);
   if (req.sourceFile) logger.info(`Source: ${req.sourceFile}${req.sourceLine ? `:${req.sourceLine}` : ""}`);
   if (req.componentName) logger.info(`Component: ${req.componentName}`);
   if (req.screenshotDataUrl) logger.info("Screenshot attached");
@@ -201,15 +263,28 @@ export async function runClaude(
   let filesModified: string[] = [];
 
   try {
-    const prompt = buildPrompt(req);
+    const prompt = buildPrompt(req, approvedPlan);
 
     const q = query({
       prompt,
       options: {
         cwd: projectDir,
-        allowedTools: ["Read", "Edit", "Write", "MultiEdit", "Bash", "Grep", "Glob"],
+        // Discuss mode is read-only: Claude can explore (Read/Grep/Glob) but
+        // cannot modify files. Quick mode and approved-plan execution keep the
+        // full edit tool set.
+        allowedTools: discussOnly
+          ? ["Read", "Grep", "Glob"]
+          : ["Read", "Edit", "Write", "MultiEdit", "Bash", "Grep", "Glob"],
         abortController,
         permissionMode: "acceptEdits",
+        // Keep the SDK's claude_code preset (for tool-use semantics) but append
+        // Inspatch's UI-editor rules. The target project's CLAUDE.md is
+        // intentionally NOT loaded (settingSources is unset → SDK isolation).
+        systemPrompt: {
+          type: "preset",
+          preset: "claude_code",
+          append: INSPATCH_SYSTEM_PROMPT,
+        },
       },
     });
 
@@ -244,6 +319,11 @@ export async function runClaude(
           logger.info("Claude completed successfully");
           if (filesModified.length) {
             logger.info(`Modified files: ${filesModified.join(", ")}`);
+          } else {
+            const planBlock = extractPlanBlock(msg.result);
+            if (planBlock) {
+              logger.info(`Plan produced (${req.mode} mode); waiting for user approval`);
+            }
           }
         } else {
           const errDetail = (msg as { error?: string }).error ?? "unknown";
@@ -270,11 +350,17 @@ export async function runClaude(
   clearTimeout(timeout);
 
   const finalText = resultText || fullText;
+  // A plan is returned when Claude ended without editing any files AND the
+  // final text contains a `## Plan` block. This covers both discuss mode and
+  // quick-mode auto-escalation.
+  const plan = filesModified.length === 0 ? extractPlanBlock(finalText) ?? undefined : undefined;
+
   return {
     success: true,
     resultText: finalText,
     filesModified,
     summary: extractSummary(finalText),
+    plan,
   };
 }
 

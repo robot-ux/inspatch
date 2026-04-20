@@ -59,8 +59,19 @@ export function setupMessageListeners(
   return () => chrome.runtime.onMessage.removeListener(handler);
 }
 
+function filePathFromLocation(): string | undefined {
+  if (location.protocol !== 'file:') return undefined;
+  try {
+    return decodeURIComponent(location.pathname);
+  } catch {
+    return location.pathname;
+  }
+}
+
 export async function sendElementSelection(el: Element): Promise<void> {
   const rect = el.getBoundingClientRect();
+  const isFileUrl = location.protocol === 'file:';
+
   const payload: Record<string, unknown> = {
     type: 'element_selection',
     tagName: el.tagName.toLowerCase(),
@@ -75,7 +86,17 @@ export async function sendElementSelection(el: Element): Promise<void> {
     },
     devicePixelRatio: window.devicePixelRatio,
     computedStyles: extractComputedStyles(el),
+    pageSource: isFileUrl ? 'file' : 'localhost',
   };
+
+  if (isFileUrl) {
+    const filePath = filePathFromLocation();
+    if (filePath) payload.filePath = filePath;
+    // DOM-only mode — React Fiber / sourcemap enrichment is intentionally skipped.
+    logger.debug('Sending element selection (file://):', payload.tagName);
+    chrome.runtime.sendMessage(payload).catch(() => {});
+    return;
+  }
 
   try {
     const selector = getUniqueSelector(el);

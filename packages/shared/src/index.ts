@@ -3,6 +3,7 @@ export {
   ElementSelectionSchema,
   ConsoleErrorSchema,
   ChangeRequestSchema,
+  ChangeModeSchema,
   StatusUpdateSchema,
   ChangeResultSchema,
   InspectCommandSchema,
@@ -10,6 +11,10 @@ export {
   PongSchema,
   PingPongSchema,
   MessageSchema,
+  PageSourceSchema,
+  DiffModeSchema,
+  PlanProposalSchema,
+  PlanApprovalSchema,
   parseMessage,
   parseProtocolMessage,
 } from "./schemas";
@@ -19,11 +24,16 @@ export type {
   ElementSelection,
   ConsoleError,
   ChangeRequest,
+  ChangeMode,
   StatusUpdate,
   ChangeResult,
   InspectCommand,
   PingPong,
   Message,
+  PageSource,
+  DiffMode,
+  PlanProposal,
+  PlanApproval,
 } from "./schemas";
 
 export { createLogger, LogLevel } from "./logger";

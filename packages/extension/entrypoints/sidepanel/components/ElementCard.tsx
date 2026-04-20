@@ -57,7 +57,23 @@ export function ElementCard({ element, onHover, onLeave, onClear, onOpenSource }
       </p>
 
       <div className="mt-2 space-y-1.5 border-t border-ip-border-subtle pt-2">
-        {element.componentName ? (
+        {element.pageSource === "file" ? (
+          <>
+            <div className="flex items-center gap-1.5">
+              <span className="font-code text-[12px] text-ip-text-muted">📄</span>
+              <span className="font-code text-[13px] font-semibold text-[#C084FC]">
+                Local HTML file
+              </span>
+            </div>
+
+            {element.filePath && (
+              <SourceLink
+                file={element.filePath}
+                onOpen={onOpenSource}
+              />
+            )}
+          </>
+        ) : element.componentName ? (
           <>
             <div className="flex items-center gap-1.5">
               <span className="font-code text-[12px] text-ip-text-muted">&lt;/&gt;</span>

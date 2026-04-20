@@ -9,12 +9,17 @@ patterns from docs/ui.md. Every token/value below is a reference to ui.md.
 
 - **Base UI doc:** [../ui.md](../ui.md) — design system, tokens, shared patterns
 - **PRD:** [../prd.md](../prd.md) — upstream requirements and user stories
-- **Related FR(s):** FR-01, FR-02, FR-03
-- **User story(ies):** Story 1, Story 2
+- **Related FR(s):** FR-01, FR-02, FR-03, FR-25, FR-28
+- **User story(ies):** Story 1, Story 2, Story 7
 
 ## Purpose
 
-Inside the localhost tab, give the user a visual target so they can pick exactly the DOM node they want Claude to change.
+Inside a supported tab (localhost dev server or `file://` HTML page), give the user a visual target so they can pick exactly the DOM node they want Claude to change.
+
+The overlay runs in one of two modes:
+
+- **React mode** — default on localhost pages; the Fiber main-world script is injected so the tooltip can surface `componentName` alongside tag + size.
+- **DOM-only mode** — active on `file://` pages (see FR-25); the Fiber script is skipped, the tooltip omits the `componentName` segment, and the downstream `change_request` carries `pageSource: "file"` + `filePath` instead of component metadata.
 
 ## Entry & Exit
 
@@ -44,7 +49,8 @@ Source: `packages/extension/entrypoints/content/overlay-manager.ts`.
 | `boxModel`     | `getComputedStyle(el)`            | margin / border / padding widths | Splits the rect into four layers |
 | `tagName`      | DOM                                | e.g. `DIV.card` | Left part of tooltip |
 | `size`         | rect width × height               | `{w}×{h}px` | Middle of tooltip |
-| `componentName`| React Fiber walk (`fiber-main-world.ts`) | e.g. `Button` | Right of tooltip; omitted when unknown |
+| `componentName`| React Fiber walk (`fiber-main-world.ts`) | e.g. `Button` | Right of tooltip; omitted when unknown or when the page is `file://` (DOM-only mode skips the Fiber script entirely) |
+| `filePath`     | decoded from `location.href` when the page is `file://` | absolute path string | Not shown in the tooltip; carried on the eventual `change_request` as the target file |
 
 ## Actions
 
@@ -68,7 +74,7 @@ Source: `packages/extension/entrypoints/content/overlay-manager.ts`.
 | **Disabled**  | n/a — inspect mode is either fully on or fully off. When off, the overlay host is detached (see Loading below); when on, every hoverable node is eligible | — | — |
 | **Loading**   | **Overlay host not yet injected** — between the side panel sending `start-inspect` and the content script mounting the Shadow DOM host (typically < 50ms) | Nothing visible on the page; side panel shows `EmptyState: inspecting` copy instead | Host mounts → Default |
 | **Empty**     | n/a — there is no "no data" concept. If inspect mode is active the user always has a page to hover; if inactive the overlay doesn't exist | — | — |
-| **Error**     | Two failure modes:<br>• **Permission-denied** — host permission missing for the current origin → overlay never mounts; side panel surfaces a content-script error banner<br>• **Fiber lookup failed** — production build / source maps missing / non-React page → layers still render correctly, but tooltip omits `componentName` and the side-panel `ElementCard` will later show `No React component detected` | For permission-denied: nothing on the page (error routed to side panel). For Fiber failure: overlay looks normal, just missing the component-name segment in the tooltip | Grant permission and reload / select a different element / fall back to DOM-only selection |
+| **Error**     | Three failure modes:<br>• **Permission-denied (host)** — host permission missing for the current localhost origin → overlay never mounts; side panel surfaces a content-script error banner<br>• **Permission-denied (file URLs)** — on a `file://` page, "Allow access to file URLs" is not enabled for the extension → overlay never mounts; side panel surfaces the one-time guidance banner described in FR-28<br>• **Fiber lookup failed** — production build / source maps missing / non-React localhost page → layers still render correctly, but tooltip omits `componentName` and the side-panel `ElementCard` will later show `No React component detected`. On `file://` pages, Fiber is intentionally skipped — the absent `componentName` is by design, not an error | For host permission-denied: nothing on the page (error routed to side panel). For file-URL permission-denied: nothing on the page; panel shows the permission banner. For Fiber failure: overlay looks normal, just missing the component-name segment in the tooltip | Grant permission and reload / enable "Allow access to file URLs" / select a different element / fall back to DOM-only selection |
 
 ## Copy
 
@@ -111,7 +117,8 @@ The overlay tracks the host page's layout, so it is inherently responsive. Nothi
 - Element is inside an iframe → not supported in v1.
 - Page uses its own Shadow DOM → outer host can still be targeted; deep-shadow children are not.
 - User opens DevTools over the target → the overlay continues to track; DevTools' own highlight may render on top.
-- The React Fiber lookup fails (production build without source maps / non-React) → tooltip omits `componentName`; `ElementCard` in the side panel will show `No React component detected`.
+- The React Fiber lookup fails (production build without source maps / non-React localhost page) → tooltip omits `componentName`; `ElementCard` in the side panel will show `No React component detected`.
+- Page is served as `file://` → DOM-only mode kicks in by default. Fiber is skipped intentionally; `componentName` is absent by design. The `change_request` carries `pageSource: "file"` and the page's absolute `filePath` so the server knows to edit that HTML directly (see FR-25, FR-26).
 - Tab navigates while the overlay is active → `ctx.onInvalidated` tears down host; inspect mode resets next load.
 
 ## Analytics / Events

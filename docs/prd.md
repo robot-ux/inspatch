@@ -5,7 +5,7 @@
 - **Feature / Product:** Inspatch — a local developer tool that lets you "click a UI element on localhost **or a local HTML file** and have Claude edit the source code"
 - **Author:** Inspatch core team
 - **Date:** 2026-04-17
-- **Version:** v0.1.4 (currently published on npm as `@inspatch/server`)
+- **Version:** v0.2.0 (planned — adds Quick/Discuss mode with plan approval; v0.1.4 currently published on npm as `@inspatch/server`)
 - **Related docs:**
   - UI: [./ui.md](./ui.md)
   - Frontend: [./fe.md](./fe.md)
@@ -142,6 +142,22 @@ During frontend development, the loop of "see something to change in the UI → 
 - [ ] Claude's edit lands in the target HTML (or a `<link>`/`<script src>` sibling resource under `--project`), and the `change_result` returns a snapshot-mode diff (`diffMode: "snapshot"`) when the project is not a Git repo.
 - [ ] If the user has not enabled "Allow access to file URLs" for the Inspatch extension, clicking Inspect on a `file://` page surfaces a one-time guidance banner with copy-able `chrome://extensions/?id=<id>` instructions (Chrome extensions cannot navigate `chrome://` URLs programmatically) — not a silent failure.
 
+### Story 8: Developer can preview a plan before risky edits
+
+**As a** developer about to request a structural or ambiguous change
+**I want to** see Claude's plan first and approve it before any file is touched
+**So that** I don't have to revert a bad edit when the request had multiple plausible interpretations
+
+**Acceptance criteria:**
+
+- [ ] The side panel's change input exposes a **Quick / Discuss** toggle. Quick is the default; Discuss forces plan-first.
+- [ ] In Quick mode, small visual tweaks (color, font-size, spacing, border-radius, shadow, single-element layout) apply directly without a plan round-trip.
+- [ ] In Quick mode, Claude auto-escalates to plan-first when the change requires DOM structure edits, touches a shared class/component used in 3+ places, is ambiguous enough that multiple interpretations materially differ, or would introduce a new dependency or file.
+- [ ] In Discuss mode, Claude never calls Edit/Write/MultiEdit/Bash — it outputs exactly one `## Plan` block (Goal / Files / Approach / Risk) and stops.
+- [ ] When a plan is produced, the side panel renders a plan card with the plan text plus `Apply plan` and `Cancel` buttons; the change input is disabled while the plan is pending.
+- [ ] `Apply plan` re-runs Claude in Quick mode with the approved plan attached so Claude executes without re-planning; `Cancel` discards the plan and returns the panel to element-selected state.
+- [ ] Pending plans expire after 10 minutes of no response. On WebSocket reconnect within that window, `resume_request` replays the pending plan alongside in-flight and recent results.
+
 ## Information Architecture
 
 ```
@@ -234,6 +250,7 @@ Notable states of `side-panel-main` (one screen, many states — see the State M
 - **connected-idle** — after first use, no element selected; shows the idle `EmptyState`.
 - **element-selected** — `ElementCard` + `ChangeInput` ready for a description.
 - **processing** — in-flight request; shows the processing card with status stream.
+- **awaiting-plan-approval** — Claude emitted a `## Plan` block (either Discuss mode or quick-mode auto-escalation); the panel renders a plan card with `Apply plan` / `Cancel`, and the change input is disabled until the user responds.
 - **result-success / result-failure** — terminal states after `change_result` lands (see `result-detail`).
 
 ## Functional Requirements
@@ -245,7 +262,7 @@ Notable states of `side-panel-main` (one screen, many states — see the State M
 | FR-03 | Extension collects `xpath`, `boundingRect`, `computedStyles`, optional `screenshotDataUrl`, optional `consoleErrors` | inspect-overlay | P0 |
 | FR-04 | Extension talks to the local server over `ws://127.0.0.1:9377`; all messages are validated by shared Zod v4 schemas | side-panel-main | P0 |
 | FR-05 | Server processes `change_request` sequentially via `RequestQueue`, streams `status_update`, returns a final `change_result` | side-panel-main, result-detail | P0 |
-| FR-06 | Server invokes `@anthropic-ai/claude-agent-sdk` with `permissionMode: "acceptEdits"` and tools limited to Read/Edit/Write/MultiEdit/Bash/Grep/Glob | n/a (server internal) | P0 |
+| FR-06 | Server invokes `@anthropic-ai/claude-agent-sdk` with `permissionMode: "acceptEdits"`. Allowed tools depend on request mode: Quick mode gets `Read/Edit/Write/MultiEdit/Bash/Grep/Glob`; Discuss mode (and auto-escalated Quick runs that emit a plan) are restricted to `Read/Grep/Glob`. System prompt is the SDK `claude_code` preset plus the Inspatch UI-editor append defined in FR-33 | n/a (server internal) | P0 |
 | FR-07 | After Claude completes, the server returns `diff` + `filesModified` in `change_result`. Diff mechanism depends on the project (Git → `git diff`; non-Git → snapshot-mode diff) — see FR-18 and FR-29 | result-detail | P0 |
 | FR-08 | Server exposes `GET /health` (health check) and `POST /open-in-editor` (open file) HTTP endpoints | result-detail | P1 |
 | FR-09 | Server auto-detects the editor (Cursor / VS Code) at startup and uses it for every `open-in-editor` call; the side panel never exposes an editor picker. `--editor` CLI flag is the sole manual override | result-detail | P1 |
@@ -269,6 +286,10 @@ Notable states of `side-panel-main` (one screen, many states — see the State M
 | FR-27 | Server CLI accepts an HTML file path for `--project` (e.g. `npx @inspatch/server ./landing/index.html`). When the argument resolves to a file, the server uses its parent directory as the effective `--project` and records the original file as the implied target of the first request if the extension hasn't sent one yet | n/a (CLI) | P1 |
 | FR-28 | Installation docs call out that `file://` support requires enabling "Allow access to file URLs" for the Inspatch extension in `chrome://extensions`. If a user clicks Inspect on a `file://` page while this permission is missing, the side panel shows a one-time guidance banner with a deep link to the extension details page — no silent failure | side-panel-main, inspect-overlay | P1 |
 | FR-29 | When `--project` is not a Git repo, the server produces `change_result.diff` via **snapshot-mode diff**: before running Claude, it hashes + stores the content of every file Claude reads/edits; after completion, it computes a unified diff against those snapshots. `change_result` includes `diffMode: "git" \| "snapshot"` so the extension can label the result accordingly | result-detail | P1 |
+| FR-30 | `change_request` carries `mode: "quick" \| "discuss"` (default `quick`). The side panel's change input exposes the toggle so users can force plan-first from the extension | side-panel-main | P0 |
+| FR-31 | In `quick` mode, Claude auto-escalates to plan-first (no edit tools called, `## Plan` block emitted instead) when the change requires DOM-structure edits, touches a shared class/component used in 3+ places without a local-override path, is ambiguous enough that multiple interpretations produce materially different outcomes, or would introduce a new dependency/file. Small visual tweaks always apply directly | side-panel-main | P0 |
+| FR-32 | Server sends `plan_proposal { requestId, plan }` when Claude emits a plan. Extension renders a plan card with `Apply plan` / `Cancel`, which send `plan_approval { requestId, approve: true \| false }`. Approval re-runs Claude in `quick` mode with the approved plan attached so it executes without re-planning; cancellation discards the plan. Pending plans have a 10-minute TTL and are replayed by `resume_request` alongside in-flight and recent results | side-panel-main | P0 |
+| FR-33 | Claude runs use the SDK `claude_code` system prompt with an appended **Inspatch UI-editor system prompt** (scope rules, UI code-quality rules, mode-of-operation, plan block format). The project's `CLAUDE.md` is **not** loaded — the Inspatch prompt is the sole project-level instruction source. `discuss`-mode runs (and auto-escalated quick runs) restrict `allowedTools` to `Read/Grep/Glob` | n/a (server internal) | P0 |
 
 Priority: `P0` = must have, `P1` = should have, `P2` = nice to have.
 
@@ -278,7 +299,7 @@ Priority: `P0` = must have, `P1` = should have, `P2` = nice to have.
 
 | Screen | Default | Empty | Loading | Error | Success | Offline | Blocked | Permission-denied |
 | ------ | ------- | ----- | ------- | ----- | ------- | ------- | ------- | ----------------- |
-| side-panel-main | ✓ (welcome = first-run onboarding; connected-idle = after first use) | ✓ (no history) | ✓ (connecting / in-flight request) | ✓ (WebSocket disconnected, Claude error) | ✓ (completed entries in history) | ✓ (disconnected: server not running → `StatusGuide`; reconnecting: chip pulses + banner) | ✓ (non-localhost URL — see `non-localhost-blocked` screen) | n/a |
+| side-panel-main | ✓ (welcome = first-run onboarding; connected-idle = after first use) | ✓ (no history) | ✓ (connecting / in-flight request / awaiting-plan-approval — plan card rendered, input disabled) | ✓ (WebSocket disconnected, Claude error) | ✓ (completed entries in history) | ✓ (disconnected: server not running → `StatusGuide`; reconnecting: chip pulses + banner) | ✓ (non-localhost URL — see `non-localhost-blocked` screen) | n/a |
 | non-localhost-blocked | ✓ (blocked card with remembered localhost URL) | ✓ (welcome variant: first-time open on a non-localhost tab — intro lede before the blocked card) | n/a | ✓ (`chrome.tabs` permission missing → fallback copy, no primary CTA) | n/a | n/a | ✓ (this screen *is* the blocked state) | n/a |
 | inspect-overlay | ✓ (React mode with Fiber; DOM-only mode on `file://` pages — see FR-25) | n/a | n/a | ✓ (Fiber lookup failed → fallback to DOM info) | ✓ (element selected) | n/a | n/a | ✓ (host permission missing for current origin; "Allow access to file URLs" not granted on a `file://` page) |
 | result-detail | ✓ | ✓ (before first status_update) | ✓ (status stream in flight) | ✓ (error status + message) | ✓ (git diff + filesModified) | n/a | n/a | n/a |
@@ -314,7 +335,7 @@ Priority: `P0` = must have, `P1` = should have, `P2` = nice to have.
 
 - **Runtime / framework:** Bun runtime + strict TypeScript; extension built with WXT (Chrome MV3) + React 19 + Tailwind v4; server is native Bun HTTP + WebSocket.
 - **Key dependencies:** `@anthropic-ai/claude-agent-sdk` (local Claude invocation), WXT (extension build), Zod v4 (shared protocol), React 19.
-- **Key protocol / data flow:** Extension captures element context → sends `change_request` (carrying `pageSource: "localhost" | "file"`, plus Fiber info on localhost / `filePath` on `file://`) over `ws://127.0.0.1:9377` → server `RequestQueue` serializes work → `claude-runner` picks prompt template by `pageSource` and calls the Agent SDK with tools limited to `Read/Edit/Write/MultiEdit/Bash/Grep/Glob` → server computes `git diff` (or snapshot-mode diff when the project is not a Git repo) → streams `status_update` and returns `change_result` (including `diffMode`) to the extension.
+- **Key protocol / data flow:** Extension captures element context → sends `change_request` (carrying `pageSource: "localhost" | "file"`, `mode: "quick" | "discuss"`, plus Fiber info on localhost / `filePath` on `file://`) over `ws://127.0.0.1:9377` → server `RequestQueue` serializes work → `claude-runner` picks prompt template by `pageSource`, appends the Inspatch UI-editor system prompt to the SDK's `claude_code` preset, and calls the Agent SDK (tools `Read/Edit/Write/MultiEdit/Bash/Grep/Glob` in quick mode; `Read/Grep/Glob` in discuss mode and auto-escalated quick runs) → if Claude emits a `## Plan` block instead of editing, the server stashes the request (10-min TTL) and sends `plan_proposal`; on `plan_approval { approve: true }` the request is re-queued in quick mode with the approved plan attached so Claude executes without re-planning → server computes `git diff` (or snapshot-mode diff when the project is not a Git repo) → streams `status_update` and returns `change_result` (including `diffMode`) to the extension.
 - **Detail:** see [./fe.md](./fe.md) and [./api.md](./api.md).
 
 ## Open Questions
@@ -324,7 +345,7 @@ Priority: `P0` = must have, `P1` = should have, `P2` = nice to have.
 | Do we ship a Firefox / Safari version? v1 is Chrome-only — is that still the plan for v2? | Core team | 2026-05-15 |
 | Do we pursue Chrome Web Store distribution? Current sideload-zip path has a trust barrier. | Core team | 2026-05-15 |
 | How do we support component detection for Vue / Svelte / Solid? (Needs new main-world scripts.) | Core team | 2026-06-30 |
-| Do we introduce a "plan-and-execute" mode for multi-step edits within one request? | Core team | 2026-06-30 |
+| Do we introduce a "plan-and-execute" mode for multi-step edits within one request? — **Resolved in v0.2.0:** Quick/Discuss mode with `plan_proposal` / `plan_approval` round-trip via FR-30..33. | Core team | 2026-06-30 |
 | Do we need telemetry? How do we measure success rate while keeping the zero-upload promise? | Core team | 2026-05-30 |
 | Do we support non-Git projects? (Current result flow depends on `git diff`.) — **Resolved in v0.2.0:** snapshot-mode diff via FR-29. | Core team | 2026-05-30 |
 | Is Claude's single-shot hit rate on DOM-only (`file://`) requests within the 85% target, or does it need a distinct baseline? | Core team | 2026-06-30 |

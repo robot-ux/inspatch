@@ -21,7 +21,7 @@ export default defineConfig({
     name: 'Inspatch',
     description: 'Visual code editing for locally-served web pages',
     permissions: ['activeTab', 'sidePanel', 'scripting', 'storage'],
-    host_permissions: ['http://localhost/*'],
+    host_permissions: ['http://localhost/*', 'file:///*'],
     web_accessible_resources: [
       {
         resources: ['fiber-main-world.js', 'console-main-world.js'],
