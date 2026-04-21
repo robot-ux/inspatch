@@ -11,9 +11,9 @@ export const pendingKey = (tabId: number) => `pending_${tabId}`;
 
 /**
  * Fresh v4 UUID used as the conversation key on the server. A new id is
- * minted on the first change_request of a tab, reset on page reload, URL
- * change, or "New conversation" — each id maps 1:1 to a long-lived Claude
- * session on the server.
+ * minted on the first change_request of a tab and reused across page reloads
+ * and same-tab URL changes — only "New conversation" or tab close mints a
+ * new one. Each id maps 1:1 to a long-lived Claude session on the server.
  */
 export function newConversationId(): string {
   return crypto.randomUUID();

@@ -54,8 +54,8 @@ export interface TabSession {
   activeRequestId: string | null;
   /**
    * Conversation key shared with the server. Lazily minted on the first
-   * change_request; reset on page reload / URL change (via `reset(tabId)`)
-   * and on the explicit "New conversation" action.
+   * change_request, survives full-page reloads (via `softReset`), and only
+   * resets on the explicit "New conversation" action or when the tab closes.
    */
   conversationId: string | null;
   /** Chat transcript for the current conversation. */
@@ -87,7 +87,15 @@ export interface TabSessionStore {
   /** Synchronous snapshot of any tab's session — use from event handlers. */
   get: (tabId: number) => TabSession | undefined;
   patch: (tabId: number, patch: SessionPatch) => void;
+  /** Full wipe — used by "New conversation" and tab close. */
   reset: (tabId: number) => void;
+  /**
+   * Reload-safe wipe: drops DOM-bound state (selectedElement, targetedXpath,
+   * inspectState, consoleErrors) that a page reload invalidates, but keeps
+   * conversationId + history + activeRequestId so the same Claude session
+   * (and any in-flight request) survives the navigation.
+   */
+  softReset: (tabId: number) => void;
   remove: (tabId: number) => void;
   /**
    * Start a new turn atomically: sets activeRequestId + conversationId,
@@ -135,6 +143,23 @@ export function useTabSessions(activeTabId: number | null): TabSessionStore {
 
   const reset = useCallback((tabId: number) => {
     setSessions((prev) => ({ ...prev, [tabId]: EMPTY_SESSION }));
+  }, []);
+
+  const softReset = useCallback((tabId: number) => {
+    setSessions((prev) => {
+      const curr = prev[tabId];
+      if (!curr) return prev;
+      return {
+        ...prev,
+        [tabId]: {
+          ...curr,
+          selectedElement: null,
+          targetedXpath: null,
+          consoleErrors: [],
+          inspectState: "idle",
+        },
+      };
+    });
   }, []);
 
   const remove = useCallback((tabId: number) => {
@@ -211,6 +236,7 @@ export function useTabSessions(activeTabId: number | null): TabSessionStore {
     get,
     patch,
     reset,
+    softReset,
     remove,
     startTurn,
     patchEntry,

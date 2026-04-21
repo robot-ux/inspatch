@@ -134,14 +134,15 @@ export default function App() {
     };
     chrome.runtime.onMessage.addListener(onRuntimeMessage);
 
-    // A tab reload invalidates the page context — any stale selection is
-    // meaningless. Drop the session for that tab entirely.
+    // A page reload invalidates DOM-bound state (selectedElement, XPath,
+    // console errors) but NOT the conversation — the server's TabAgent is
+    // keyed by conversationId, so reusing it after reload keeps Claude's
+    // context intact. In-flight requestId stays registered so the final
+    // change_result still reaches this tab post-reload.
     const onTabReload = (tabId: number, changeInfo: { status?: string }) => {
       if (changeInfo.status !== "loading") return;
-      const curr = sessions.get(tabId);
-      if (!curr) return;
-      if (curr.activeRequestId) sessions.release(curr.activeRequestId);
-      sessions.reset(tabId);
+      if (!sessions.get(tabId)) return;
+      sessions.softReset(tabId);
     };
     chrome.tabs.onUpdated.addListener(onTabReload);
 
