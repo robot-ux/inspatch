@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 import { resolve, dirname } from 'path';
 import { existsSync, statSync } from 'fs';
-import { createLogger } from '@inspatch/shared';
+import { createLogger, DEFAULT_SERVER_PORT } from '@inspatch/shared';
 import {
   createServer,
   detectEditor,
@@ -12,7 +12,6 @@ import { printBanner } from './banner';
 
 const logger = createLogger('server');
 
-const DEFAULT_PORT = 9377;
 const args = process.argv.slice(2);
 
 function printHelp() {
@@ -25,7 +24,7 @@ Usage:
 Options:
   -p, --project <path>     Target project directory, or path to an HTML file
                            (the file's parent directory becomes the project root)
-  --port <number>          WebSocket port (default: ${DEFAULT_PORT})
+  --port <number>          WebSocket port (default: ${DEFAULT_SERVER_PORT})
   --editor <cursor|vscode> Editor to open files in (default: auto-detect)
   --timeout <seconds>      Claude runner timeout in seconds (default: 1800)
   -h, --help               Show this help message
@@ -64,7 +63,7 @@ function getPositionalArg(): string | undefined {
 
 function getPort(): number {
   const raw = getCliArg('--port') ?? process.env.INSPATCH_PORT;
-  if (!raw) return DEFAULT_PORT;
+  if (!raw) return DEFAULT_SERVER_PORT;
   const p = parseInt(raw, 10);
   if (p >= 1 && p <= 65535) return p;
   logger.error(`Invalid port: ${raw}. Must be 1-65535.`);

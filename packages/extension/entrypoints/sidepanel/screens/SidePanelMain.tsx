@@ -1,4 +1,5 @@
 import type { ChangeMode, ChangeResult, ConsoleError, ElementSelection, StatusUpdate } from "@inspatch/shared";
+import { SERVER_ENDPOINT_DISPLAY } from "../config";
 import type { ConnectionStatus } from "../hooks/useWebSocket";
 import { ChangeInput } from "../components/ChangeInput";
 import { ConsoleErrorTray } from "../components/ConsoleErrorTray";
@@ -144,7 +145,7 @@ export function SidePanelMain(props: SidePanelMainProps) {
       <FooterMeta
         left={
           <>
-            ws://127.0.0.1:9377
+            {SERVER_ENDPOINT_DISPLAY}
             <span className="mx-1.5 text-ip-text-muted/40">·</span>
             <span className="text-ip-text-muted/70">v{getExtensionVersion()}</span>
           </>

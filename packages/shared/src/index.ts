@@ -42,3 +42,5 @@ export type {
 
 export { createLogger, LogLevel } from "./logger";
 export type { Logger, LogLevelName } from "./logger";
+
+export { DEFAULT_SERVER_PORT } from "./config";

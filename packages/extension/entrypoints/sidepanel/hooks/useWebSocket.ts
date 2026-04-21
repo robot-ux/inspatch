@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from "react";
-import { parseMessage, createLogger, type Message } from "@inspatch/shared";
+import { parseMessage, createLogger, DEFAULT_SERVER_PORT, type Message } from "@inspatch/shared";
 
 const logger = createLogger("ws-client");
 
@@ -15,7 +15,7 @@ async function broadcastConnectionState(url: string, connected: boolean) {
   try {
     await chrome.storage.session.set({
       serverConnected: connected,
-      serverPort: parseInt(url.split(":").pop() || "9377", 10),
+      serverPort: parseInt(url.split(":").pop() || String(DEFAULT_SERVER_PORT), 10),
       connectedAt: connected ? Date.now() : null,
     });
   } catch {
