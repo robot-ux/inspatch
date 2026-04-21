@@ -13,6 +13,7 @@ import { useFirstRun } from "./hooks/useFirstRun";
 import { useWebSocket } from "./hooks/useWebSocket";
 import { NonLocalhostBlocked } from "./screens/NonLocalhostBlocked";
 import { SidePanelMain } from "./screens/SidePanelMain";
+import { resolveTargetedNode } from "./utils/tree";
 
 const SERVER_WS = "ws://localhost:9377";
 const SERVER_HTTP = "http://localhost:9377";
@@ -62,7 +63,13 @@ export default function App() {
   const firstRun = useFirstRun();
 
   const [inspectState, setInspectState] = useState<InspectState>("idle");
+  // selectedElement is the anchor of the snapshot tree — set when the user
+  // picks an element via Inspect, never rewritten by tree-row clicks.
   const [selectedElement, setSelectedElement] = useState<ElementSelection | null>(null);
+  // Which row inside the snapshot is "the element we'll send to Claude on next
+  // change_request". Defaults to the anchor; user can re-target by clicking
+  // any row in ElementTree. Tree structure is unaffected.
+  const [targetedXpath, setTargetedXpath] = useState<string | null>(null);
   const [transientError, setTransientError] = useState<string | null>(null);
   const [processing, setProcessing] = useState<StatusUpdate | null>(null);
   const [changeResult, setChangeResult] = useState<ChangeResult | null>(null);
@@ -111,6 +118,7 @@ export default function App() {
       setProcessing(null);
       setPendingPlan(null);
       setSelectedElement(null);
+      setTargetedXpath(null);
       setHasUsedInspect(false);
       activeRequestId.current = null;
     }
@@ -163,6 +171,7 @@ export default function App() {
       const pending = data[key] as { requestId: string; element: ElementSelection } | undefined;
       if (!pending) return;
       setSelectedElement(pending.element);
+      setTargetedXpath(pending.element.xpath);
       setHasUsedInspect(true);
       setInspectState("idle");
       activeRequestId.current = pending.requestId;
@@ -229,7 +238,10 @@ export default function App() {
       if (!message || typeof message !== "object" || !("type" in message)) return;
       const msg = message as { type: string };
       if (msg.type === "element_selection") {
-        setSelectedElement(message as ElementSelection);
+        // New Inspect replaces the anchor and resets the target to it.
+        const next = message as ElementSelection;
+        setSelectedElement(next);
+        setTargetedXpath(next.xpath);
         setInspectState("idle");
         inspectTabId.current = activeTabId.current;
       } else if (msg.type === "inspect-stopped") {
@@ -248,6 +260,7 @@ export default function App() {
       if (changeInfo.status !== "loading" || tabId !== inspectTabId.current) return;
       inspectTabId.current = null;
       setSelectedElement(null);
+      setTargetedXpath(null);
       setInspectState("idle");
       setTransientError(null);
       setProcessing(null);
@@ -297,6 +310,7 @@ export default function App() {
     }
     setInspectState("idle");
     setSelectedElement(null);
+    setTargetedXpath(null);
     setProcessing(null);
     setChangeResult(null);
     setPendingPlan(null);
@@ -324,10 +338,10 @@ export default function App() {
     }
   }, [sendToContentScript]);
 
-  const handleAncestorHover = useCallback(
+  const handleRetargetHover = useCallback(
     async (xpath: string) => {
       try {
-        await sendToContentScript({ type: "highlight-ancestor", xpath });
+        await sendToContentScript({ type: "highlight-by-xpath", xpath });
       } catch {
         // ignore
       }
@@ -335,7 +349,7 @@ export default function App() {
     [sendToContentScript],
   );
 
-  const handleAncestorLeave = useCallback(async () => {
+  const handleRetargetLeave = useCallback(async () => {
     try {
       await sendToContentScript({ type: "clear-highlight" });
     } catch {
@@ -343,28 +357,23 @@ export default function App() {
     }
   }, [sendToContentScript]);
 
-  const handleAncestorSelect = useCallback(
-    async (xpath: string) => {
-      try {
-        // Content script re-selects and broadcasts a new element_selection
-        // message; selectedElement updates via the existing onRuntimeMessage
-        // listener. Reset transient result state so the new selection starts fresh.
-        await sendToContentScript({ type: "select-ancestor", xpath });
-        setProcessing(null);
-        setChangeResult(null);
-        setPendingPlan(null);
-        setStreamedText("");
-        setStatusLog([]);
-      } catch {
-        // transientError already set
-      }
-    },
-    [sendToContentScript],
-  );
+  const handleTargetRow = useCallback((xpath: string) => {
+    // Retargeting inside the existing snapshot tree is purely local: move the
+    // target pointer, clear stale result state so the detail panel reflects
+    // the new target without mixing in a previous request's output.
+    setTargetedXpath(xpath);
+    setProcessing(null);
+    setChangeResult(null);
+    setPendingPlan(null);
+    setStreamedText("");
+    setStatusLog([]);
+  }, []);
 
   const handleSendChange = useCallback(
     (description: string, imageDataUrl?: string, mode: ChangeMode = "quick") => {
       if (!selectedElement) return;
+      const target = resolveTargetedNode(selectedElement, targetedXpath);
+      const isAnchor = target.xpath === selectedElement.xpath;
       const requestId = crypto.randomUUID();
       activeRequestId.current = requestId;
       setProcessing(null);
@@ -378,15 +387,20 @@ export default function App() {
         type: "change_request",
         requestId,
         description,
-        elementXpath: selectedElement.xpath,
-        componentName: selectedElement.componentName,
+        // Target fields point to the actively selected row in the tree.
+        // boundingRect / computedStyles / sourceColumn only exist on the
+        // anchor (ElementSelection), so drop them when the user retargeted
+        // to a different row — Claude has componentName + sourceFile + xpath
+        // to locate the edit site precisely.
+        elementXpath: target.xpath,
+        componentName: target.componentName,
         ancestors: selectedElement.ancestors,
-        sourceFile: selectedElement.sourceFile,
-        sourceLine: selectedElement.sourceLine,
-        sourceColumn: selectedElement.sourceColumn,
+        sourceFile: target.sourceFile,
+        sourceLine: target.sourceLine,
+        sourceColumn: isAnchor ? selectedElement.sourceColumn : undefined,
         screenshotDataUrl: imageDataUrl,
-        boundingRect: selectedElement.boundingRect,
-        computedStyles: selectedElement.computedStyles,
+        boundingRect: isAnchor ? selectedElement.boundingRect : undefined,
+        computedStyles: isAnchor ? selectedElement.computedStyles : undefined,
         consoleErrors: consoleErrors.length > 0 ? consoleErrors : undefined,
         pageSource,
         filePath: selectedElement.filePath,
@@ -400,7 +414,7 @@ export default function App() {
       }
       setConsoleErrors([]);
     },
-    [selectedElement, consoleErrors, send],
+    [selectedElement, targetedXpath, consoleErrors, send],
   );
 
   const handleApprovePlan = useCallback(() => {
@@ -463,6 +477,7 @@ export default function App() {
       inspectState={inspectState}
       hasUsedInspect={hasUsedInspect}
       selectedElement={selectedElement}
+      targetedXpath={targetedXpath}
       processing={processing}
       changeResult={changeResult}
       pendingPlan={pendingPlan}
@@ -478,9 +493,9 @@ export default function App() {
       onClear={handleClear}
       onElementHover={handleElementHover}
       onElementLeave={handleElementLeave}
-      onAncestorHover={handleAncestorHover}
-      onAncestorLeave={handleAncestorLeave}
-      onAncestorSelect={handleAncestorSelect}
+      onRetargetHover={handleRetargetHover}
+      onRetargetLeave={handleRetargetLeave}
+      onTargetRow={handleTargetRow}
       onSendChange={handleSendChange}
       onApprovePlan={handleApprovePlan}
       onCancelPlan={handleCancelPlan}

@@ -28,16 +28,21 @@ export default defineUnlistedScript(() => {
     return null;
   }
 
-  // Walks fiber.return up until a named component type is found. Used both for
-  // the clicked target and for each DOM ancestor (to label ancestors in the UI).
-  function nearestComponentName(fiber: any): string | null {
+  // Walks fiber.return until a named component is found. Returns both the
+  // component name and that fiber's _debugSource when available (dev builds
+  // only). Used for every DOM node in the snapshot tree.
+  function nearestComponent(
+    fiber: any,
+  ): { componentName: string | null; debugSource: { fileName: string; lineNumber: number } | null } {
     let cur = fiber;
     while (cur) {
       const name = getComponentName(cur);
-      if (name) return name;
+      if (name) {
+        return { componentName: name, debugSource: cur._debugSource ?? null };
+      }
       cur = cur.return;
     }
-    return null;
+    return { componentName: null, debugSource: null };
   }
 
   // startFiber._debugSource points to where this exact JSX node is written —
@@ -74,34 +79,35 @@ export default defineUnlistedScript(() => {
     return { componentName, debugSource };
   }
 
-  function componentNameForSelector(selector: string): string | null {
+  function rowInfoForSelector(selector: string) {
     const el = document.querySelector(selector);
-    if (!el) return null;
+    if (!el) return { componentName: null, debugSource: null };
     const key = findFiberKey(el);
-    if (!key) return null;
-    return nearestComponentName((el as any)[key]);
+    if (!key) return { componentName: null, debugSource: null };
+    return nearestComponent((el as any)[key]);
   }
 
   function extractBundle(
     selfSelector: string,
     ancestorSelectors: string[],
+    descendantSelectors: string[],
     queryId: string,
   ) {
     const el = document.querySelector(selfSelector);
     const self = el
       ? extractSelfFiberData(el)
       : { componentName: null, debugSource: null };
-    const ancestorComponents = ancestorSelectors.map((sel) =>
-      componentNameForSelector(sel),
-    );
-    return { self, ancestorComponents, queryId };
+    const ancestors = ancestorSelectors.map(rowInfoForSelector);
+    const descendants = descendantSelectors.map(rowInfoForSelector);
+    return { self, ancestors, descendants, queryId };
   }
 
   scriptEl.addEventListener("inspatch-fiber-query", ((e: CustomEvent) => {
-    const { selfSelector, ancestorSelectors, queryId } = e.detail ?? {};
+    const { selfSelector, ancestorSelectors, descendantSelectors, queryId } = e.detail ?? {};
     if (typeof selfSelector !== "string" || typeof queryId !== "string") return;
-    const selectors = Array.isArray(ancestorSelectors) ? ancestorSelectors : [];
-    const result = extractBundle(selfSelector, selectors, queryId);
+    const aSelectors = Array.isArray(ancestorSelectors) ? ancestorSelectors : [];
+    const dSelectors = Array.isArray(descendantSelectors) ? descendantSelectors : [];
+    const result = extractBundle(selfSelector, aSelectors, dSelectors, queryId);
     scriptEl.dispatchEvent(new CustomEvent("inspatch-fiber-result", { detail: result }));
   }) as EventListener);
 });

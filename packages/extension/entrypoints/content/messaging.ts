@@ -1,7 +1,7 @@
-import { createLogger, type AncestorInfo } from '@inspatch/shared';
+import { createLogger, type AncestorInfo, type DescendantInfo } from '@inspatch/shared';
 import type { InspectMode } from './inspect-mode';
 import { getXPath, getUniqueSelector } from './element-detector';
-import { queryFiberBundle } from './fiber-bridge';
+import { queryFiberBundle, type RowFiberInfo } from './fiber-bridge';
 import { normalizeSourcePath, findComponentSource } from './source-resolver';
 
 const logger = createLogger('messaging');
@@ -16,10 +16,23 @@ const RELEVANT_STYLE_PROPERTIES = [
 
 const SKIP_VALUES = new Set(['', 'none', 'normal', 'auto', '0px']);
 
-// DOM ancestor walk depth. Stops at <html>. Deep enough to cover typical React
-// apps without making the fiber batch query too slow.
-const ANCESTOR_MAX_DEPTH = 12;
-const ANCESTOR_CLASS_LIMIT = 3;
+// Tree window around the inspected anchor: 2 ancestor levels + anchor + 2
+// descendant levels (5 levels total). DESCENDANT_MAX_COUNT caps sibling breadth
+// so wide subtrees don't blow up the side panel.
+const ANCESTOR_MAX_DEPTH = 2;
+const DESCENDANT_MAX_DEPTH = 2;
+const DESCENDANT_MAX_COUNT = 6;
+const CLASS_LIMIT = 3;
+
+// Set by content.ts after overlay host is created. Nullable so hot-reload in
+// dev (where the script re-imports before content.ts runs) doesn't crash.
+let overlayHostRef: HTMLElement | null = null;
+export function setOverlayHost(host: HTMLElement): void {
+  overlayHostRef = host;
+}
+function isOverlayNode(el: Element): boolean {
+  return el.tagName.toLowerCase() === 'inspatch-overlay' || el === overlayHostRef;
+}
 
 function extractComputedStyles(el: Element): Record<string, string> {
   const computed = window.getComputedStyle(el);
@@ -37,32 +50,63 @@ function elementClasses(el: Element): string[] | undefined {
   const raw = typeof el.className === 'string' ? el.className : '';
   if (!raw) return undefined;
   const list = raw.split(/\s+/).filter(Boolean);
-  return list.length > 0 ? list.slice(0, ANCESTOR_CLASS_LIMIT) : undefined;
+  return list.length > 0 ? list.slice(0, CLASS_LIMIT) : undefined;
 }
 
 interface AncestorDraft extends AncestorInfo {
   selector: string;
+}
+interface DescendantDraft extends DescendantInfo {
+  selector: string;
+}
+
+function describeElement(el: Element) {
+  return {
+    xpath: getXPath(el),
+    tagName: el.tagName.toLowerCase(),
+    id: el.id || undefined,
+    classes: elementClasses(el),
+    selector: getUniqueSelector(el),
+  };
 }
 
 function collectAncestorDrafts(el: Element): AncestorDraft[] {
   const out: AncestorDraft[] = [];
   let cur = el.parentElement;
   while (cur && cur !== document.documentElement && out.length < ANCESTOR_MAX_DEPTH) {
-    out.push({
-      xpath: getXPath(cur),
-      tagName: cur.tagName.toLowerCase(),
-      id: cur.id || undefined,
-      classes: elementClasses(cur),
-      selector: getUniqueSelector(cur),
-    });
+    if (!isOverlayNode(cur)) out.push(describeElement(cur));
     cur = cur.parentElement;
   }
   return out;
 }
 
+// DFS-limited walk: depth<=2, <=6 total. Keeps the tree preview compact while
+// covering "2 levels of children" intent.
+function collectDescendantDrafts(root: Element): DescendantDraft[] {
+  const out: DescendantDraft[] = [];
+  function walk(el: Element, depth: number) {
+    if (depth > DESCENDANT_MAX_DEPTH) return;
+    for (const child of Array.from(el.children)) {
+      if (out.length >= DESCENDANT_MAX_COUNT) return;
+      if (isOverlayNode(child)) continue;
+      out.push({ ...describeElement(child), depth });
+      walk(child, depth + 1);
+    }
+  }
+  walk(root, 1);
+  return out;
+}
+
+// getXPath omits the /html root (walks up to documentElement exclusive), so
+// the result looks like "/body[1]/div[1]/...". Against `document`, an absolute
+// XPath like /body[1] doesn't resolve because <html> is the only element child.
+// Prefixing an extra slash turns it into descendant axis "//body[1]/..." which
+// matches from anywhere — exactly one body element per page in practice.
 function resolveByXPath(xpath: string): Element | null {
+  if (!xpath) return null;
+  const normalized = xpath.startsWith('//') ? xpath : '/' + xpath;
   try {
-    const r = document.evaluate(xpath, document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null);
+    const r = document.evaluate(normalized, document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null);
     return (r.singleNodeValue as Element) ?? null;
   } catch {
     return null;
@@ -92,18 +136,9 @@ export function setupMessageListeners(
     } else if (msg?.type === 'clear-highlight') {
       inspectMode.clearHighlight();
       sendResponse({ ok: true });
-    } else if (msg?.type === 'highlight-ancestor' && typeof msg.xpath === 'string') {
+    } else if (msg?.type === 'highlight-by-xpath' && typeof msg.xpath === 'string') {
       const el = resolveByXPath(msg.xpath);
       if (el) inspectMode.highlightElement(el);
-      sendResponse({ ok: !!el });
-    } else if (msg?.type === 'select-ancestor' && typeof msg.xpath === 'string') {
-      const el = resolveByXPath(msg.xpath);
-      if (el) {
-        inspectMode.clearHighlight();
-        // Fire-and-forget: re-selection broadcasts a new element_selection
-        // message back to the side panel via sendElementSelection.
-        sendElementSelection(el).catch(() => {});
-      }
       sendResponse({ ok: !!el });
     }
     return true;
@@ -120,6 +155,22 @@ function filePathFromLocation(): string | undefined {
   } catch {
     return location.pathname;
   }
+}
+
+function stripSelector<T extends { selector: string }>(d: T): Omit<T, 'selector'> {
+  const { selector: _s, ...rest } = d;
+  return rest;
+}
+
+function enrichRow<T extends AncestorInfo>(base: T, row: RowFiberInfo | undefined): T {
+  if (!row) return base;
+  const out: T = { ...base };
+  if (row.componentName) out.componentName = row.componentName;
+  if (row.debugSource) {
+    out.sourceFile = normalizeSourcePath(row.debugSource.fileName);
+    out.sourceLine = row.debugSource.lineNumber;
+  }
+  return out;
 }
 
 export async function sendElementSelection(el: Element): Promise<void> {
@@ -143,38 +194,40 @@ export async function sendElementSelection(el: Element): Promise<void> {
     pageSource: isFileUrl ? 'file' : 'localhost',
   };
 
+  const ancestorDrafts = collectAncestorDrafts(el);
+  const descendantDrafts = collectDescendantDrafts(el);
+
   if (isFileUrl) {
     const filePath = filePathFromLocation();
     if (filePath) payload.filePath = filePath;
     // DOM-only mode — React Fiber / sourcemap enrichment is intentionally skipped.
-    // Ancestors still populated (without componentName) so the UI tree works.
-    const drafts = collectAncestorDrafts(el);
-    if (drafts.length > 0) {
-      payload.ancestors = drafts.map(({ selector: _s, ...rest }) => rest);
-    }
+    // Tree still populated (sans componentName) so the UI renders navigation.
+    if (ancestorDrafts.length > 0) payload.ancestors = ancestorDrafts.map(stripSelector);
+    if (descendantDrafts.length > 0) payload.descendants = descendantDrafts.map(stripSelector);
     logger.debug('Sending element selection (file://):', payload.tagName);
     chrome.runtime.sendMessage(payload).catch(() => {});
     return;
   }
 
-  const drafts = collectAncestorDrafts(el);
-
   try {
     const selfSelector = getUniqueSelector(el);
-    const ancestorSelectors = drafts.map((d) => d.selector);
-    const bundle = await queryFiberBundle(selfSelector, ancestorSelectors);
+    const bundle = await queryFiberBundle(
+      selfSelector,
+      ancestorDrafts.map((d) => d.selector),
+      descendantDrafts.map((d) => d.selector),
+    );
 
-    if (bundle.self.componentName) {
-      payload.componentName = bundle.self.componentName;
+    if (bundle.self.componentName) payload.componentName = bundle.self.componentName;
+
+    if (ancestorDrafts.length > 0) {
+      payload.ancestors = ancestorDrafts.map((d, i) =>
+        enrichRow(stripSelector(d), bundle.ancestors[i]),
+      );
     }
-
-    if (drafts.length > 0) {
-      const ancestors: AncestorInfo[] = drafts.map((d, i) => {
-        const componentName = bundle.ancestorComponents[i] ?? undefined;
-        const { selector: _s, ...rest } = d;
-        return componentName ? { ...rest, componentName } : rest;
-      });
-      payload.ancestors = ancestors;
+    if (descendantDrafts.length > 0) {
+      payload.descendants = descendantDrafts.map((d, i) =>
+        enrichRow(stripSelector(d), bundle.descendants[i]),
+      );
     }
 
     if (bundle.self.debugSource) {
@@ -191,10 +244,9 @@ export async function sendElementSelection(el: Element): Promise<void> {
       }
     }
   } catch {
-    // Enrichment failed — still ship ancestors (DOM-only) so the UI tree renders.
-    if (drafts.length > 0) {
-      payload.ancestors = drafts.map(({ selector: _s, ...rest }) => rest);
-    }
+    // Enrichment failed — still ship tree data (DOM-only) so the UI works.
+    if (ancestorDrafts.length > 0) payload.ancestors = ancestorDrafts.map(stripSelector);
+    if (descendantDrafts.length > 0) payload.descendants = descendantDrafts.map(stripSelector);
   }
 
   logger.debug('Sending element selection:', payload.tagName, payload.componentName ?? '(no component)');

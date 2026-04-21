@@ -2,18 +2,18 @@ import { createLogger } from '@inspatch/shared';
 
 const logger = createLogger('fiber');
 
-export interface FiberBundle {
-  self: {
-    componentName: string | null;
-    debugSource: { fileName: string; lineNumber: number } | null;
-  };
-  ancestorComponents: (string | null)[];
+export interface RowFiberInfo {
+  componentName: string | null;
+  debugSource: { fileName: string; lineNumber: number } | null;
 }
 
-const NULL_BUNDLE: FiberBundle = {
-  self: { componentName: null, debugSource: null },
-  ancestorComponents: [],
-};
+export interface FiberBundle {
+  self: RowFiberInfo;
+  ancestors: RowFiberInfo[];
+  descendants: RowFiberInfo[];
+}
+
+const NULL_ROW: RowFiberInfo = { componentName: null, debugSource: null };
 
 let injectedScript: HTMLScriptElement | null = null;
 let bridgeReady = false;
@@ -24,19 +24,22 @@ const pendingQueries = new Map<
   { resolve: (result: FiberBundle) => void; timer: ReturnType<typeof setTimeout> }
 >();
 
+function toRow(v: unknown): RowFiberInfo {
+  const r = v as { componentName?: unknown; debugSource?: { fileName?: unknown; lineNumber?: unknown } } | null;
+  if (!r) return NULL_ROW;
+  const componentName = typeof r.componentName === "string" ? r.componentName : null;
+  const debugSource =
+    r.debugSource && typeof r.debugSource.fileName === "string"
+      ? { fileName: r.debugSource.fileName, lineNumber: Number(r.debugSource.lineNumber) || 0 }
+      : null;
+  return { componentName, debugSource };
+}
+
 function toBundle(detail: any): FiberBundle {
-  const selfIn = detail?.self ?? {};
   return {
-    self: {
-      componentName: typeof selfIn.componentName === "string" ? selfIn.componentName : null,
-      debugSource:
-        selfIn.debugSource && typeof selfIn.debugSource.fileName === "string"
-          ? selfIn.debugSource
-          : null,
-    },
-    ancestorComponents: Array.isArray(detail?.ancestorComponents)
-      ? detail.ancestorComponents.map((v: unknown) => (typeof v === "string" ? v : null))
-      : [],
+    self: toRow(detail?.self),
+    ancestors: Array.isArray(detail?.ancestors) ? detail.ancestors.map(toRow) : [],
+    descendants: Array.isArray(detail?.descendants) ? detail.descendants.map(toRow) : [],
   };
 }
 
@@ -84,9 +87,16 @@ export function initFiberBridge(): Promise<void> {
 export function queryFiberBundle(
   selfSelector: string,
   ancestorSelectors: string[],
+  descendantSelectors: string[],
 ): Promise<FiberBundle> {
+  const fallback = (): FiberBundle => ({
+    self: NULL_ROW,
+    ancestors: ancestorSelectors.map(() => NULL_ROW),
+    descendants: descendantSelectors.map(() => NULL_ROW),
+  });
+
   if (!bridgeReady || !injectedScript) {
-    return Promise.resolve({ ...NULL_BUNDLE, ancestorComponents: ancestorSelectors.map(() => null) });
+    return Promise.resolve(fallback());
   }
 
   const queryId = `fq-${++queryCounter}`;
@@ -94,14 +104,14 @@ export function queryFiberBundle(
   return new Promise<FiberBundle>((resolve) => {
     const timer = setTimeout(() => {
       pendingQueries.delete(queryId);
-      resolve({ ...NULL_BUNDLE, ancestorComponents: ancestorSelectors.map(() => null) });
+      resolve(fallback());
     }, 2000);
 
     pendingQueries.set(queryId, { resolve, timer });
 
     injectedScript!.dispatchEvent(
       new CustomEvent("inspatch-fiber-query", {
-        detail: { selfSelector, ancestorSelectors, queryId },
+        detail: { selfSelector, ancestorSelectors, descendantSelectors, queryId },
       }),
     );
   });

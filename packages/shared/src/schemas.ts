@@ -18,17 +18,29 @@ export const BoundingRectSchema = z.object({
 export const PageSourceSchema = z.enum(["localhost", "file"]);
 export type PageSource = z.infer<typeof PageSourceSchema>;
 
-// DOM ancestor captured at selection time. Enables clickable "Ancestors" UI
-// in the side panel (hover to highlight, click to re-select). componentName is
-// populated from the fiber owning that DOM node (nearest function-typed fiber).
+// DOM ancestor captured at selection time. The Element-tree UI uses it to
+// render a stable snapshot around the inspected anchor; the side panel lets
+// the user "target" any row without rebuilding the tree, so each row carries
+// its own React component / source info, populated from the fiber owning the
+// DOM node. sourceFile/sourceLine come from `_debugSource` (dev builds only).
 export const AncestorInfoSchema = z.object({
   xpath: z.string(),
   tagName: z.string(),
   id: z.string().optional(),
   classes: z.array(z.string()).optional(),
   componentName: z.string().optional(),
+  sourceFile: z.string().optional(),
+  sourceLine: z.number().optional(),
 });
 export type AncestorInfo = z.infer<typeof AncestorInfoSchema>;
+
+// Direct or near descendants of the selected element (depth 1 or 2 in the
+// DOM, capped to keep payloads small). `depth` is 1 for immediate children,
+// 2 for grandchildren — used to render tree indentation.
+export const DescendantInfoSchema = AncestorInfoSchema.extend({
+  depth: z.number().int().min(1).max(4),
+});
+export type DescendantInfo = z.infer<typeof DescendantInfoSchema>;
 
 export const ElementSelectionSchema = z.object({
   type: z.literal("element_selection"),
@@ -39,6 +51,7 @@ export const ElementSelectionSchema = z.object({
   boundingRect: BoundingRectSchema,
   componentName: z.string().optional(),
   ancestors: z.array(AncestorInfoSchema).optional(),
+  descendants: z.array(DescendantInfoSchema).optional(),
   sourceFile: z.string().optional(),
   sourceLine: z.number().optional(),
   sourceColumn: z.number().optional(),

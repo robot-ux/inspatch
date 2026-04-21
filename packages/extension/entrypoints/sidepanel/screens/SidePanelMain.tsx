@@ -12,6 +12,7 @@ import { PlanProposal } from "../components/PlanProposal";
 import { ProcessingStatus } from "../components/ProcessingStatus";
 import { StatusDot } from "../components/StatusDot";
 import { StatusGuide } from "../components/StatusGuide";
+import { resolveTargetedNode } from "../utils/tree";
 
 type InspectState = "idle" | "inspecting";
 
@@ -22,6 +23,7 @@ interface SidePanelMainProps {
   inspectState: InspectState;
   hasUsedInspect: boolean;
   selectedElement: ElementSelection | null;
+  targetedXpath: string | null;
   processing: StatusUpdate | null;
   changeResult: ChangeResult | null;
   pendingPlan: string | null;
@@ -38,9 +40,9 @@ interface SidePanelMainProps {
   onClear: () => void;
   onElementHover: () => void;
   onElementLeave: () => void;
-  onAncestorHover: (xpath: string) => void;
-  onAncestorLeave: () => void;
-  onAncestorSelect: (xpath: string) => void;
+  onRetargetHover: (xpath: string) => void;
+  onRetargetLeave: () => void;
+  onTargetRow: (xpath: string) => void;
   onSendChange: (description: string, imageDataUrl?: string, mode?: ChangeMode) => void;
   onApprovePlan: () => void;
   onCancelPlan: () => void;
@@ -56,6 +58,7 @@ export function SidePanelMain(props: SidePanelMainProps) {
     inspectState,
     hasUsedInspect,
     selectedElement,
+    targetedXpath,
     processing,
     changeResult,
     pendingPlan,
@@ -71,9 +74,9 @@ export function SidePanelMain(props: SidePanelMainProps) {
     onClear,
     onElementHover,
     onElementLeave,
-    onAncestorHover,
-    onAncestorLeave,
-    onAncestorSelect,
+    onRetargetHover,
+    onRetargetLeave,
+    onTargetRow,
     onSendChange,
     onApprovePlan,
     onCancelPlan,
@@ -86,6 +89,10 @@ export function SidePanelMain(props: SidePanelMainProps) {
   const showCompactToggle = hasUsedInspect || !!selectedElement || inspecting;
   const disconnected = connectionStatus !== "connected";
   const elementVisible = !!selectedElement && !inspecting;
+  const targetedNode = selectedElement
+    ? resolveTargetedNode(selectedElement, targetedXpath)
+    : null;
+  const targetHasSource = !!targetedNode?.sourceFile;
   // On file:// pages without "Allow access to file URLs", the content script
   // can't be injected so Inspect would always fail — block it at the source.
   const inspectBlocked = disconnected || showFileUrlBanner;
@@ -116,7 +123,7 @@ export function SidePanelMain(props: SidePanelMainProps) {
         {renderBody()}
       </main>
 
-      {elementVisible && !selectedElement?.sourceFile && selectedElement?.pageSource !== "file" && (
+      {elementVisible && !targetHasSource && selectedElement?.pageSource !== "file" && (
         <div className="border-t border-ip-warning/30 bg-ip-warning-muted px-4 py-2">
           <p className="text-[11px] text-ip-warning">
             No source file detected — changes may require manual file lookup. Ensure your dev server has source maps enabled.
@@ -159,13 +166,14 @@ export function SidePanelMain(props: SidePanelMainProps) {
       <div className="space-y-3">
         <ElementCard
           element={selectedElement}
+          targetedXpath={targetedXpath}
           onHover={onElementHover}
           onLeave={onElementLeave}
           onClear={onClear}
           onOpenSource={onOpenSource}
-          onAncestorHover={onAncestorHover}
-          onAncestorLeave={onAncestorLeave}
-          onAncestorSelect={onAncestorSelect}
+          onRetargetHover={onRetargetHover}
+          onRetargetLeave={onRetargetLeave}
+          onTargetRow={onTargetRow}
         />
         {pendingPlan ? (
           <PlanProposal

@@ -1,7 +1,7 @@
 import { createLogger } from '@inspatch/shared';
 import { createOverlayHost, createOverlayLayers } from './content/overlay-manager';
 import { InspectMode } from './content/inspect-mode';
-import { setupMessageListeners, sendElementSelection } from './content/messaging';
+import { setupMessageListeners, sendElementSelection, setOverlayHost } from './content/messaging';
 import { initFiberBridge } from './content/fiber-bridge';
 import { initConsoleBridge } from './content/console-bridge';
 import { clearSourceMapCache } from './content/source-resolver';
@@ -27,6 +27,9 @@ export default defineContentScript({
 
     const { host, shadow } = createOverlayHost();
     const layers = createOverlayLayers(shadow);
+    // Share host reference with messaging.ts so DOM walks (ancestor / descendant
+    // collection) can skip the inspect overlay and never emit it into the tree.
+    setOverlayHost(host);
 
     let lastSelectedElement: Element | null = null;
 
