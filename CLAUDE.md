@@ -29,16 +29,17 @@ packages/
 
 1. Extension captures element (XPath, React component name, source file/line, computed styles, optional screenshot)
 2. Extension sends `change_request` over WebSocket to the local server (`ws://127.0.0.1:9377`)
-3. Server enqueues the request; `RequestQueue` processes one at a time
-4. `claude-runner.ts` calls `@anthropic-ai/claude-agent-sdk` with `permissionMode: "acceptEdits"` and tools: `Read, Edit, Write, MultiEdit, Bash, Grep, Glob`
-5. Claude reads and edits the target project's source files directly
+3. `RequestQueue.enqueue` calls `project-resolver.ts` to resolve the target project root from the request's own `sourceFile`/`filePath` (walks up to the nearest `package.json`, strictly bounded by `$HOME`). Rejects with a clear error if it can't resolve; otherwise queues the request with that root.
+4. `claude-runner.ts` calls `@anthropic-ai/claude-agent-sdk` with `cwd` = the resolved root, `permissionMode: "acceptEdits"`, and tools: `Read, Edit, Write, MultiEdit, Bash, Grep, Glob`
+5. Claude reads and edits that project's source files directly
 6. Server sends `status_update` events (streaming) and a final `change_result` with git diff back to the extension
 
 ### Key files
 
 - `packages/shared/src/schemas.ts` — all WebSocket message types (Zod schemas + TypeScript types)
 - `packages/server/src/server.ts` — Bun WebSocket server, `/health` and `/open-in-editor` HTTP endpoints
-- `packages/server/src/queue.ts` — `RequestQueue`: sequential processing, reconnect/resume support (24h result buffer)
+- `packages/server/src/queue.ts` — `RequestQueue`: sequential processing, reconnect/resume support (24h result buffer); resolves per-request project root via `project-resolver.ts`
+- `packages/server/src/project-resolver.ts` — derives Claude `cwd` from a request's source path; `$HOME`-bounded, `package.json`-anchored, rejects when unresolved
 - `packages/server/src/claude-runner.ts` — builds prompt, runs Claude Agent SDK, extracts modified files and git diff
 - `packages/server/src/editor.ts` — auto-detects Cursor vs VS Code; handles `open-in-editor` requests
 - `packages/extension/entrypoints/` — WXT entrypoints: `background.ts`, `content.ts`, `sidepanel/`, `fiber-main-world.ts`, `console-main-world.ts`
@@ -48,7 +49,7 @@ packages/
 ```bash
 bun install                              # install all workspace deps
 bun dev                                  # extension dev server (http://localhost:3737, hot reload)
-bun server --project ./path/to/app       # local server pointing at a target project
+bun server                                # local server (auto-resolves project per request)
 bun test                                 # run all tests
 
 # Load extension in Chrome:
@@ -59,7 +60,7 @@ bun test                                 # run all tests
 # Extension: wxt zip → upload .zip to GitHub Releases
 ```
 
-CLI flags for server: `-p/--project <dir>`, `--port <number>`, `--editor <cursor|vscode>`, `--timeout <seconds>`
+CLI flags for server: `--port <number>`, `--editor <cursor|vscode>`, `--timeout <seconds>`. No `--project` — for each request the server walks up from the inspected element's source path to the nearest `package.json`, bounded by `$HOME`.
 
 ---
 

@@ -10,8 +10,19 @@ export const SERVER_VERSION = "0.0.1";
 export type { EditorScheme };
 export { detectEditor } from "./editor";
 
-export function createServer(port: number, projectDir: string, editor: EditorScheme, timeoutMs = 1_800_000): Server<WSData> {
-  const queue = new RequestQueue(projectDir, timeoutMs);
+// Returned so the CLI can wire Ctrl-C / SIGTERM handlers that cleanly tear
+// down the server socket and every Claude subprocess owned by the pool.
+export interface InspatchServer {
+  server: Server<WSData>;
+  shutdown(): void;
+}
+
+export function createServer(port: number, editor: EditorScheme, timeoutMs = 1_800_000): InspatchServer {
+  const queue = new RequestQueue(timeoutMs);
+  // Fallback base for relative paths passed to /open-in-editor. The server
+  // itself is no longer bound to a project, so we use the directory the user
+  // launched `npx @inspatch/server` from. Absolute paths ignore this.
+  const openInEditorBase = process.cwd();
 
   const server = Bun.serve<WSData>({
     hostname: "127.0.0.1",
@@ -27,7 +38,7 @@ export function createServer(port: number, projectDir: string, editor: EditorSch
       }
 
       if (url.pathname === "/open-in-editor") {
-        return openInEditor(url, projectDir, editor);
+        return openInEditor(url, openInEditorBase, editor);
       }
 
       const upgraded = server.upgrade(req, {
@@ -41,7 +52,9 @@ export function createServer(port: number, projectDir: string, editor: EditorSch
     websocket: {
       idleTimeout: 60,
       open(ws) {
-        logger.info(`Connected: ${ws.data.id}`);
+        // Generic connect is debug-level; the meaningful info comes from the
+        // extension's follow-up `identify` message (tab URL).
+        logger.debug(`Socket opened: ${ws.data.id}`);
       },
       message(ws, raw) {
         const text = typeof raw === "string" ? raw : new TextDecoder().decode(raw);
@@ -78,8 +91,19 @@ export function createServer(port: number, projectDir: string, editor: EditorSch
 
         const msg = result.data;
 
+        if (msg.type === "identify") {
+          const prev = ws.data.tabUrl;
+          ws.data.tabUrl = msg.tabUrl;
+          if (!prev) {
+            logger.info(`Tab connected: ${msg.tabUrl}`);
+          } else if (prev !== msg.tabUrl) {
+            logger.info(`Tab switched: ${prev} → ${msg.tabUrl}`);
+          }
+          return;
+        }
+
         if (msg.type === "change_request") {
-          logger.info(`Change request from ${ws.data.id}: "${msg.description}"`);
+          logger.info(`Change request from ${ws.data.tabUrl ?? ws.data.id}: "${msg.description}"`);
           queue.enqueue(msg, ws);
           return;
         }
@@ -99,10 +123,24 @@ export function createServer(port: number, projectDir: string, editor: EditorSch
         logger.info(`Received ${msg.type} from ${ws.data.id}`);
       },
       close(ws, code, reason) {
-        logger.info(`Disconnected: ${ws.data.id} (${code} ${reason || ""})`);
+        if (ws.data.tabUrl) {
+          logger.info(`Tab disconnected: ${ws.data.tabUrl}`);
+        } else {
+          logger.debug(`Socket closed: ${ws.data.id} (${code} ${reason || ""})`);
+        }
       },
     },
   });
 
-  return server;
+  return {
+    server,
+    shutdown() {
+      try {
+        server.stop();
+      } catch {
+        /* server may already be stopped */
+      }
+      queue.closePool();
+    },
+  };
 }

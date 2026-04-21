@@ -1,14 +1,10 @@
-import { query, type SDKMessage, type SDKUserMessage } from "@anthropic-ai/claude-agent-sdk";
-import type { ChangeRequest } from "@inspatch/shared";
-import { createLogger } from "@inspatch/shared";
-import {
-  APPROVED_PLAN_PREFIX,
-  DISCUSS_MODE_NOTE,
-  INSPATCH_SYSTEM_PROMPT,
-  QUICK_MODE_NOTE,
-} from "./prompts";
+// Shared helpers for TabAgent / TabAgentPool. No `runClaude` entry point any
+// more — per-tab long-lived Query lives in `tab-agent.ts`, which imports the
+// pure helpers (prompt building, SDK message parsing, result extraction,
+// git diff) from here.
 
-const logger = createLogger("claude");
+import type { SDKMessage, SDKUserMessage } from "@anthropic-ai/claude-agent-sdk";
+import type { ChangeRequest } from "@inspatch/shared";
 
 export interface StatusCallback {
   (status: string, message: string, streamText?: string): void;
@@ -16,12 +12,18 @@ export interface StatusCallback {
 
 export interface RunResult {
   success: boolean;
-  // When the run ended with a plan (either discuss mode or quick-mode auto-escalation),
-  // `plan` holds the extracted `## Plan` text and no files were modified.
+  // When the turn ended with a plan (either discuss mode or quick-mode auto-
+  // escalation), `plan` holds the extracted `## Plan` text and no files were
+  // modified on this turn.
   plan?: string;
   resultText?: string;
   filesModified?: string[];
+  // Headline describing what visually/behaviorally changed. Parsed from the
+  // mandatory `**Changes:**` line in the Summary block.
   summary?: string;
+  // Caveats / risks / follow-ups. Parsed from `**Notes:**`. `—` collapses to
+  // undefined so the UI can hide the row when there's nothing to flag.
+  notes?: string;
   error?: string;
 }
 
@@ -31,7 +33,7 @@ export function extractPlanBlock(text: string): string | null {
   return match ? match[1].trim() : null;
 }
 
-function buildPromptText(req: ChangeRequest, approvedPlan?: string): string {
+export function buildPromptText(req: ChangeRequest): string {
   const isFile = req.pageSource === "file";
 
   const lines: string[] = [
@@ -91,15 +93,6 @@ function buildPromptText(req: ChangeRequest, approvedPlan?: string): string {
     lines.push("", "The user has also attached a screenshot of the element for visual reference.");
   }
 
-  // Mode note: tells Claude whether to apply edits or only output a plan.
-  // When resuming after an approved plan, the approved-plan block overrides the
-  // mode rules — Claude must just execute the plan.
-  if (approvedPlan) {
-    lines.push("", APPROVED_PLAN_PREFIX + approvedPlan);
-  } else {
-    lines.push("", req.mode === "discuss" ? DISCUSS_MODE_NOTE : QUICK_MODE_NOTE);
-  }
-
   if (req.consoleErrors?.length) {
     lines.push("", "## Console Errors");
     lines.push("The following errors are currently in the browser console:");
@@ -150,45 +143,67 @@ function buildPromptText(req: ChangeRequest, approvedPlan?: string): string {
   return lines.join("\n");
 }
 
-function buildPrompt(req: ChangeRequest, approvedPlan?: string): string | AsyncIterable<SDKUserMessage> {
-  const text = buildPromptText(req, approvedPlan);
+// Builds a single SDKUserMessage from a change request, attaching the
+// screenshot as an image part when one is present. Used by TabAgent to push
+// turns into the long-lived Claude Query.
+export function buildUserMessage(req: ChangeRequest): SDKUserMessage {
+  const text = buildPromptText(req);
 
   if (!req.screenshotDataUrl) {
-    return text;
-  }
-
-  const dataUrlMatch = req.screenshotDataUrl.match(/^data:([^;]+);base64,(.+)$/);
-  if (!dataUrlMatch) {
-    return text;
-  }
-
-  const [, mediaType, base64Data] = dataUrlMatch;
-
-  async function* generateMessages(): AsyncGenerator<SDKUserMessage> {
-    yield {
+    return {
       type: "user",
-      message: {
-        role: "user",
-        content: [
-          { type: "text", text },
-          {
-            type: "image",
-            source: {
-              type: "base64",
-              media_type: mediaType as "image/png" | "image/jpeg" | "image/gif" | "image/webp",
-              data: base64Data,
-            },
-          },
-        ],
-      },
+      message: { role: "user", content: text },
       parent_tool_use_id: null,
     } satisfies SDKUserMessage;
   }
 
-  return generateMessages();
+  const dataUrlMatch = req.screenshotDataUrl.match(/^data:([^;]+);base64,(.+)$/);
+  if (!dataUrlMatch) {
+    return {
+      type: "user",
+      message: { role: "user", content: text },
+      parent_tool_use_id: null,
+    } satisfies SDKUserMessage;
+  }
+
+  const [, mediaType, base64Data] = dataUrlMatch;
+
+  return {
+    type: "user",
+    message: {
+      role: "user",
+      content: [
+        { type: "text", text },
+        {
+          type: "image",
+          source: {
+            type: "base64",
+            media_type: mediaType as "image/png" | "image/jpeg" | "image/gif" | "image/webp",
+            data: base64Data,
+          },
+        },
+      ],
+    },
+    parent_tool_use_id: null,
+  } satisfies SDKUserMessage;
 }
 
-function extractTextFromMessage(msg: SDKMessage): string | null {
+// Short natural-language nudge sent when the user approves a plan Claude
+// proposed in the previous turn. The plan is NOT repeated here — Claude has
+// it in conversation memory.
+export function buildApprovalMessage(): SDKUserMessage {
+  return {
+    type: "user",
+    message: {
+      role: "user",
+      content:
+        "Approved. Please execute the plan you just proposed now, applying the edits directly. Do not re-plan.",
+    },
+    parent_tool_use_id: null,
+  } satisfies SDKUserMessage;
+}
+
+export function extractTextFromMessage(msg: SDKMessage): string | null {
   if (msg.type === "assistant") {
     const content = (msg.message as { content?: unknown[] })?.content;
     if (Array.isArray(content)) {
@@ -201,7 +216,7 @@ function extractTextFromMessage(msg: SDKMessage): string | null {
   return null;
 }
 
-function extractToolNameFromMessage(msg: SDKMessage): string | null {
+export function extractToolNameFromMessage(msg: SDKMessage): string | null {
   if (msg.type === "assistant") {
     const content = (msg.message as { content?: unknown[] })?.content;
     if (Array.isArray(content)) {
@@ -212,7 +227,7 @@ function extractToolNameFromMessage(msg: SDKMessage): string | null {
   return null;
 }
 
-function extractToolInputDetail(msg: SDKMessage): string | null {
+export function extractToolInputDetail(msg: SDKMessage): string | null {
   if (msg.type !== "assistant") return null;
   const content = (msg.message as { content?: unknown[] })?.content;
   if (!Array.isArray(content)) return null;
@@ -228,160 +243,20 @@ function extractToolInputDetail(msg: SDKMessage): string | null {
   return null;
 }
 
-export interface RunOptions {
-  signal?: AbortSignal;
-  timeoutMs?: number;
-  // Set when resuming after the user approved a plan from a previous run.
-  // Flips the prompt into "just execute this plan" mode regardless of req.mode.
-  approvedPlan?: string;
-}
-
-export async function runClaude(
-  req: ChangeRequest,
-  projectDir: string,
-  onStatus: StatusCallback,
-  options: RunOptions = {},
-): Promise<RunResult> {
-  const { signal, timeoutMs = 1_800_000, approvedPlan } = options;
-  const discussOnly = req.mode === "discuss" && !approvedPlan;
-
-  logger.info("Starting Claude Code SDK for:", req.description.slice(0, 100));
-  logger.info(`Project dir: ${projectDir}`);
-  logger.info(`Mode: ${req.mode}${approvedPlan ? " (resuming with approved plan)" : ""}`);
-  if (req.sourceFile) logger.info(`Source: ${req.sourceFile}${req.sourceLine ? `:${req.sourceLine}` : ""}`);
-  if (req.componentName) logger.info(`Component: ${req.componentName}`);
-  if (req.screenshotDataUrl) logger.info("Screenshot attached");
-
-  onStatus("analyzing", "Starting Claude Code...");
-
-  const abortController = new AbortController();
-  if (signal) {
-    signal.addEventListener("abort", () => abortController.abort(), { once: true });
-  }
-
-  const timeout = setTimeout(() => {
-    logger.warn(`Timeout reached (${timeoutMs / 1000}s), aborting`);
-    abortController.abort();
-  }, timeoutMs);
-
-  let fullText = "";
-  let currentStatus = "analyzing";
-  let resultText = "";
-  let filesModified: string[] = [];
-
-  try {
-    const prompt = buildPrompt(req, approvedPlan);
-
-    const q = query({
-      prompt,
-      options: {
-        cwd: projectDir,
-        // Discuss mode is read-only: Claude can explore (Read/Grep/Glob) but
-        // cannot modify files. Quick mode and approved-plan execution keep the
-        // full edit tool set.
-        allowedTools: discussOnly
-          ? ["Read", "Grep", "Glob"]
-          : ["Read", "Edit", "Write", "MultiEdit", "Bash", "Grep", "Glob"],
-        abortController,
-        permissionMode: "acceptEdits",
-        // Keep the SDK's claude_code preset (for tool-use semantics) but append
-        // Inspatch's UI-editor rules. The target project's CLAUDE.md is
-        // intentionally NOT loaded (settingSources is unset → SDK isolation).
-        systemPrompt: {
-          type: "preset",
-          preset: "claude_code",
-          append: INSPATCH_SYSTEM_PROMPT,
-        },
-      },
-    });
-
-    for await (const msg of q) {
-      logger.debug("SDK event:", msg.type, msg.type === "result" ? (msg as { subtype?: string }).subtype : "");
-
-      if (msg.type === "assistant") {
-        const text = extractTextFromMessage(msg);
-        if (text) {
-          fullText = text;
-          onStatus(currentStatus, "Claude is working...", text);
-        }
-
-        const toolName = extractToolNameFromMessage(msg);
-        if (toolName) {
-          const detail = extractToolInputDetail(msg);
-          logger.info(`[${toolName}] ${detail ?? ""}`);
-          if (["Read", "Grep", "Glob"].includes(toolName)) {
-            currentStatus = "locating";
-            onStatus(currentStatus, detail ? `Reading ${detail}` : "Reading files...");
-          } else if (["Edit", "Write", "MultiEdit"].includes(toolName)) {
-            currentStatus = "applying";
-            onStatus(currentStatus, detail ? `Editing ${detail}` : "Applying changes...");
-          } else if (toolName === "Bash") {
-            onStatus(currentStatus, detail ? `Running: ${detail}` : "Running command...");
-          }
-        }
-      } else if (msg.type === "result") {
-        if (msg.subtype === "success") {
-          resultText = msg.result;
-          filesModified = extractModifiedFiles(msg.result);
-          logger.info("Claude completed successfully");
-          if (filesModified.length) {
-            logger.info(`Modified files: ${filesModified.join(", ")}`);
-          } else {
-            const planBlock = extractPlanBlock(msg.result);
-            if (planBlock) {
-              logger.info(`Plan produced (${req.mode} mode); waiting for user approval`);
-            }
-          }
-        } else {
-          const errDetail = (msg as { error?: string }).error ?? "unknown";
-          logger.error("Claude returned error:", errDetail);
-          clearTimeout(timeout);
-          return {
-            success: false,
-            error: `Claude Code error: ${errDetail}`,
-            resultText: fullText,
-          };
-        }
-      }
-    }
-  } catch (err) {
-    clearTimeout(timeout);
-    const errMsg = err instanceof Error ? err.message : "Unknown error";
-    if (errMsg.includes("abort")) {
-      return { success: false, error: "Request timed out or was cancelled" };
-    }
-    logger.error("SDK error:", errMsg);
-    return { success: false, error: errMsg };
-  }
-
-  clearTimeout(timeout);
-
-  const finalText = resultText || fullText;
-  // A plan is returned when Claude ended without editing any files AND the
-  // final text contains a `## Plan` block. This covers both discuss mode and
-  // quick-mode auto-escalation.
-  const plan = filesModified.length === 0 ? extractPlanBlock(finalText) ?? undefined : undefined;
-
-  return {
-    success: true,
-    resultText: finalText,
-    filesModified,
-    summary: extractSummary(finalText),
-    plan,
-  };
-}
-
-function extractModifiedFiles(text: string): string[] {
-  // Try structured summary first
-  const filesLine = text.match(/\*\*Files modified:\*\*\s*(.+)/i);
+export function extractModifiedFiles(text: string): string[] {
+  // Prefer the structured `**Files:**` line inside the Summary block.
+  // Fall back to the legacy `**Files modified:**` header so mid-rollout
+  // turns from old Claude output still parse.
+  const filesLine = text.match(/\*\*Files(?:\s+modified)?:\*\*\s*(.+)/i);
   if (filesLine) {
     const files = [...filesLine[1].matchAll(/`([^`]+)`/g)]
-      .map(m => m[1])
-      .filter(f => f.includes(".") && !f.includes(" "));
+      .map((m) => m[1])
+      .filter((f) => f.includes(".") && !f.includes(" "));
     if (files.length) return files;
   }
 
-  // Fallback: scan for edit/write verbs
+  // Last-resort fallback: scan narrative for edit/write verbs. Keeps us
+  // producing *some* file list when Claude skips the Summary block entirely.
   const files = new Set<string>();
   const patterns = [
     /(?:edited|modified|updated|changed|wrote|created)\s+`([^`]+)`/gi,
@@ -398,26 +273,34 @@ function extractModifiedFiles(text: string): string[] {
   return [...files];
 }
 
-function extractSummary(text: string): string | undefined {
-  const match = text.match(/## Summary\n([\s\S]+?)(?:\n##\s|\n---|\n\n\n|$)/);
-  return match?.[1].trim();
+// Pulls the named `**Label:**` value out of the Summary block. Returns
+// undefined when the block is missing, the label is missing, or the value
+// is the sentinel `—` / `-` / `none` (case-insensitive) that Claude uses
+// to mean "nothing to say here".
+function extractSummaryField(block: string, label: string): string | undefined {
+  const re = new RegExp(`\\*\\*${label}:\\*\\*\\s*([\\s\\S]+?)(?=\\n\\*\\*\\w|$)`, "i");
+  const match = block.match(re);
+  if (!match) return undefined;
+  const value = match[1].trim();
+  if (!value) return undefined;
+  if (/^(?:—|-|none|n\/a)$/i.test(value)) return undefined;
+  return value;
 }
 
-export async function getGitDiff(projectDir: string, files?: string[]): Promise<string | null> {
-  try {
-    const args = ["diff", "--stat", "--patch", "--no-color"];
-    if (files?.length) args.push("--", ...files);
-    const proc = Bun.spawn(["git", ...args], {
-      cwd: projectDir,
-      stdout: "pipe",
-      stderr: "pipe",
-    });
-    const output = await new Response(proc.stdout).text();
-    await proc.exited;
-    return output.trim() || null;
-  } catch {
-    return null;
-  }
+export interface SummaryParts {
+  changes?: string;
+  notes?: string;
+}
+
+// Parses the Summary block emitted at the end of an edit turn. See
+// prompts.ts for the expected shape: `**Changes:** ...` / `**Notes:** ...`.
+export function extractSummaryParts(text: string): SummaryParts {
+  const block = text.match(/##\s*Summary\s*\n([\s\S]+?)(?:\n##\s|\n---|\n\n\n|$)/)?.[1];
+  if (!block) return {};
+  return {
+    changes: extractSummaryField(block, "Changes"),
+    notes: extractSummaryField(block, "Notes"),
+  };
 }
 
 export async function getGitModifiedFiles(projectDir: string): Promise<string[]> {

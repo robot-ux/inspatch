@@ -8,7 +8,6 @@ interface ProcessingStatusProps {
   changeResult: ChangeResult | null;
   streamedText: string;
   statusLog: string[];
-  onRetry: () => void;
   onOpenSource: (file: string, line?: number, column?: number) => void;
 }
 
@@ -41,10 +40,10 @@ const ACTIVE_STATUSES: ReadonlySet<StatusKey> = new Set([
 ]);
 
 function guidanceFor(errorText: string | undefined): string {
-  if (!errorText) return "Check the server terminal for details. You can try again with a different description.";
-  if (errorText.includes("timed out")) return "Try a simpler change description, or increase the server timeout.";
-  if (errorText.includes("abort")) return "The request was cancelled. Try again when ready.";
-  return "Check the server terminal for details. You can try again with a different description.";
+  if (!errorText) return "Check the server terminal for details — then send a new message to retry.";
+  if (errorText.includes("timed out")) return "Try a simpler change, or increase the server timeout, then send a new message.";
+  if (errorText.includes("abort")) return "The request was cancelled. Send a new message when ready.";
+  return "Check the server terminal for details — then send a new message to retry.";
 }
 
 export function ProcessingStatus({
@@ -52,7 +51,6 @@ export function ProcessingStatus({
   changeResult,
   streamedText,
   statusLog,
-  onRetry,
   onOpenSource,
 }: ProcessingStatusProps) {
   if (!statusUpdate && !changeResult) return null;
@@ -61,7 +59,7 @@ export function ProcessingStatus({
     return changeResult.success ? (
       <SuccessCard result={changeResult} onOpenSource={onOpenSource} />
     ) : (
-      <FailureCard result={changeResult} onRetry={onRetry} />
+      <FailureCard result={changeResult} />
     );
   }
 
@@ -148,48 +146,33 @@ interface SuccessCardProps {
   onOpenSource: (file: string, line?: number, column?: number) => void;
 }
 
+// Primary files shown inline before collapsing the rest into a "+N more" pill.
+// Matches the cap Claude is instructed to respect in the system prompt.
+const FILES_DISPLAY_LIMIT = 10;
+
 function SuccessCard({ result, onOpenSource }: SuccessCardProps) {
-  const [copied, setCopied] = useState(false);
-
-  useEffect(() => {
-    if (!copied) return;
-    const t = setTimeout(() => setCopied(false), 2000);
-    return () => clearTimeout(t);
-  }, [copied]);
-
-  const copyDiff = async () => {
-    if (!result.diff) return;
-    try {
-      await navigator.clipboard.writeText(result.diff);
-      setCopied(true);
-    } catch {
-      // ignore
-    }
-  };
+  const files = result.filesModified ?? [];
+  const shown = files.slice(0, FILES_DISPLAY_LIMIT);
+  const overflow = files.length - shown.length;
 
   return (
     <div className="animate-fade-in-scale space-y-2 rounded-ip-lg border border-ip-success/30 bg-ip-success-muted p-4">
-      <div className="flex items-start justify-between gap-2">
-        <div className="min-w-0 flex-1">
-          {result.summary ? (
-            <ReactMarkdown components={mdComponents}>{result.summary}</ReactMarkdown>
-          ) : (
-            <span className="text-[13px] font-semibold text-ip-success">Changes applied</span>
-          )}
-        </div>
-        {result.diffMode === "snapshot" && (
-          <span
-            title="Diff computed by comparing pre-run snapshots (project isn't a Git repo)"
-            className="shrink-0 rounded-ip-sm border border-ip-border-accent px-1.5 py-0.5 font-code text-[10px] uppercase tracking-wide text-ip-info"
-          >
-            snapshot diff
-          </span>
-        )}
-      </div>
+      <span className="block text-[13px] font-semibold text-ip-success">Changes applied</span>
 
-      {result.filesModified && result.filesModified.length > 0 && (
-        <div className="space-y-1">
-          {result.filesModified.map((file) => (
+      {result.summary && (
+        <p className="text-[12px] leading-relaxed text-ip-text-secondary">{result.summary}</p>
+      )}
+
+      {result.notes && (
+        <p className="text-[11px] leading-relaxed text-ip-text-muted">
+          <span className="font-semibold text-ip-text-secondary">Notes: </span>
+          {result.notes}
+        </p>
+      )}
+
+      {shown.length > 0 && (
+        <div className="space-y-1 pt-1">
+          {shown.map((file) => (
             <button
               key={file}
               type="button"
@@ -200,19 +183,14 @@ function SuccessCard({ result, onOpenSource }: SuccessCardProps) {
               {file}
             </button>
           ))}
-        </div>
-      )}
-
-      {result.diff && (
-        <div className="group relative mt-2">
-          <button
-            type="button"
-            onClick={copyDiff}
-            className="absolute right-2 top-2 z-10 rounded-ip-sm bg-ip-bg-tertiary px-2 py-0.5 text-[11px] font-semibold text-ip-text-secondary opacity-0 transition-opacity hover:text-ip-text-primary group-hover:opacity-100 active:scale-95"
-          >
-            {copied ? "Copied" : "Copy"}
-          </button>
-          <DiffBlock diff={result.diff} />
+          {overflow > 0 && (
+            <span
+              className="inline-block rounded-ip-sm bg-ip-bg-tertiary px-1.5 py-0.5 font-code text-[10px] text-ip-text-muted"
+              title={files.slice(FILES_DISPLAY_LIMIT).join("\n")}
+            >
+              +{overflow} more
+            </span>
+          )}
         </div>
       )}
     </div>
@@ -221,10 +199,9 @@ function SuccessCard({ result, onOpenSource }: SuccessCardProps) {
 
 interface FailureCardProps {
   result: ChangeResult;
-  onRetry: () => void;
 }
 
-function FailureCard({ result, onRetry }: FailureCardProps) {
+function FailureCard({ result }: FailureCardProps) {
   return (
     <div className="animate-fade-in-scale space-y-2 rounded-ip-lg border border-ip-error/30 bg-ip-error-muted p-4">
       <span className="block text-[13px] font-semibold text-ip-error">Failed</span>
@@ -234,13 +211,6 @@ function FailureCard({ result, onRetry }: FailureCardProps) {
           <p className="text-[11px] text-ip-text-muted">{guidanceFor(result.error)}</p>
         </div>
       )}
-      <button
-        type="button"
-        onClick={onRetry}
-        className="rounded-ip-sm bg-ip-error px-3 py-1 text-[11px] font-semibold text-white transition-all duration-150 hover:brightness-110 active:scale-95"
-      >
-        Try Again
-      </button>
     </div>
   );
 }
@@ -307,24 +277,3 @@ function OperationLog({ entries }: { entries: string[] }) {
   );
 }
 
-function DiffBlock({ diff }: { diff: string }) {
-  const lines = diff.split("\n");
-  return (
-    <div className="max-h-48 overflow-y-auto rounded-ip-sm bg-ip-bg-primary p-2 font-code text-[11px]">
-      {lines.map((line, i) => {
-        let tone = "text-ip-text-muted";
-        if (line.startsWith("+")) tone = "text-ip-success";
-        else if (line.startsWith("-")) tone = "text-ip-error";
-        else if (line.startsWith("@@")) tone = "text-ip-info";
-        return (
-          <div key={i} className="flex whitespace-pre-wrap">
-            <span className="w-8 shrink-0 select-none pr-2 text-right text-ip-text-muted">
-              {i + 1}
-            </span>
-            <span className={tone}>{line || " "}</span>
-          </div>
-        );
-      })}
-    </div>
-  );
-}

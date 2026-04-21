@@ -1,24 +1,19 @@
 import { useState } from "react";
-import type { ConnectionStatus } from "../hooks/useWebSocket";
 import { HeaderBar } from "../components/HeaderBar";
 import { ChevronDownIcon, GlobeLockIcon, SparklesIcon } from "../components/icons";
 
 const DOCS_URL = "https://github.com/robot-ux/inspatch#supported-urls";
 
 interface NonLocalhostBlockedProps {
-  connectionStatus: ConnectionStatus;
   currentUrl: string | undefined;
-  lastLocalhostUrl: string | undefined;
+  lastSupportedUrl: string | undefined;
   firstTime: boolean;
-  onReconnect: () => void;
 }
 
 export function NonLocalhostBlocked({
-  connectionStatus,
   currentUrl,
-  lastLocalhostUrl,
+  lastSupportedUrl,
   firstTime,
-  onReconnect,
 }: NonLocalhostBlockedProps) {
   const [whyOpen, setWhyOpen] = useState(firstTime);
 
@@ -28,15 +23,17 @@ export function NonLocalhostBlocked({
     chrome.tabs.create({ url: DOCS_URL });
   };
 
-  const title = firstTime ? "Welcome to Inspatch" : "Inspatch works on localhost only";
+  const title = firstTime
+    ? "Welcome to Inspatch"
+    : "Inspatch works on localhost or local HTML files";
   const subtitle = firstTime
-    ? "Open your localhost dev server in this tab — Inspatch will pick up automatically."
-    : "Open your dev server in this tab to start inspecting.";
+    ? "Open your localhost dev server — or a local .html file — in this tab and Inspatch will pick up automatically."
+    : "Open a localhost dev server or a local .html file in this tab to start inspecting.";
   const Icon = firstTime ? SparklesIcon : GlobeLockIcon;
 
   return (
     <div className="flex h-screen flex-col bg-ip-bg-primary">
-      <HeaderBar status={connectionStatus} onReconnect={onReconnect} notApplicable />
+      <HeaderBar notApplicable />
 
       <div className="flex-1 animate-fade-in space-y-3 overflow-y-auto p-4">
         <section className="flex flex-col items-center gap-4 rounded-ip-lg border border-ip-border-subtle bg-ip-bg-card px-5 py-6 shadow-ip-card">
@@ -64,10 +61,10 @@ export function NonLocalhostBlocked({
             </p>
           </div>
 
-          {lastLocalhostUrl && (
+          {lastSupportedUrl && (
             <p className="flex items-center gap-1.5 text-[11px] text-ip-text-muted">
               <span>Last session</span>
-              <span className="font-code text-ip-text-secondary">{lastLocalhostUrl}</span>
+              <span className="font-code text-ip-text-secondary">{lastSupportedUrl}</span>
             </p>
           )}
 
@@ -102,10 +99,11 @@ export function NonLocalhostBlocked({
             <div className="overflow-hidden">
               <div className="space-y-1.5 border-t border-ip-border-subtle px-3 pb-3 pt-2 text-[11px] leading-relaxed text-ip-text-muted">
                 <p>
-                  Inspatch edits source files on your machine. It only attaches to tabs served from
-                  localhost because that's where a dev server — and therefore your source — lives.
+                  Inspatch edits source files on your machine. It attaches to localhost dev
+                  servers and to local <span className="font-code">.html</span> files — both
+                  cases where your source lives on disk.
                 </p>
-                <p>Production sites have no local source to edit.</p>
+                <p>Production sites and other file types have no editable source to target.</p>
               </div>
             </div>
           </div>

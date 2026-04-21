@@ -30,6 +30,7 @@ describe("MessageSchema discriminated union", () => {
   test("routes change_request correctly", () => {
     const msg = {
       type: "change_request",
+      conversationId: "11111111-1111-4111-8111-111111111111",
       description: "Make the button red",
       elementXpath: "/html/body/div/button",
     };
@@ -104,6 +105,7 @@ describe("ChangeRequestSchema new fields", () => {
   test("accepts payload with boundingRect, computedStyles, sourceColumn", () => {
     const msg = {
       type: "change_request",
+      conversationId: "11111111-1111-4111-8111-111111111111",
       description: "Make it red",
       elementXpath: "/html/body/div/button",
       boundingRect: { x: 10, y: 20, width: 100, height: 50 },
@@ -113,13 +115,33 @@ describe("ChangeRequestSchema new fields", () => {
     expect(ChangeRequestSchema.safeParse(msg).success).toBe(true);
   });
 
-  test("still validates without new optional fields (backward compat)", () => {
+  test("still validates without optional fields (backward compat)", () => {
+    const msg = {
+      type: "change_request",
+      conversationId: "11111111-1111-4111-8111-111111111111",
+      description: "Change color",
+      elementXpath: "/html/body/div",
+    };
+    expect(ChangeRequestSchema.safeParse(msg).success).toBe(true);
+  });
+
+  test("rejects missing conversationId", () => {
     const msg = {
       type: "change_request",
       description: "Change color",
       elementXpath: "/html/body/div",
     };
-    expect(ChangeRequestSchema.safeParse(msg).success).toBe(true);
+    expect(ChangeRequestSchema.safeParse(msg).success).toBe(false);
+  });
+
+  test("rejects non-uuid conversationId", () => {
+    const msg = {
+      type: "change_request",
+      conversationId: "not-a-uuid",
+      description: "Change color",
+      elementXpath: "/html/body/div",
+    };
+    expect(ChangeRequestSchema.safeParse(msg).success).toBe(false);
   });
 });
 
@@ -127,6 +149,7 @@ describe("ChangeRequestSchema mode field", () => {
   test("defaults mode to \"quick\" when omitted", () => {
     const msg = {
       type: "change_request",
+      conversationId: "11111111-1111-4111-8111-111111111111",
       description: "Make it red",
       elementXpath: "/html/body/div",
     };
@@ -140,6 +163,7 @@ describe("ChangeRequestSchema mode field", () => {
   test("accepts mode=\"discuss\"", () => {
     const msg = {
       type: "change_request",
+      conversationId: "11111111-1111-4111-8111-111111111111",
       description: "Rework this card",
       elementXpath: "/html/body/div",
       mode: "discuss",
@@ -154,6 +178,7 @@ describe("ChangeRequestSchema mode field", () => {
   test("rejects unknown mode values", () => {
     const msg = {
       type: "change_request",
+      conversationId: "11111111-1111-4111-8111-111111111111",
       description: "Make it red",
       elementXpath: "/html/body/div",
       mode: "yolo",

@@ -1,26 +1,18 @@
-import type { ConnectionStatus } from "../hooks/useWebSocket";
 import { StopIcon } from "./icons";
 import { InspatchMark } from "./InspatchWordmark";
 
-type ChipVariant = ConnectionStatus | "not-applicable";
-
 interface HeaderBarProps {
-  status: ConnectionStatus;
+  /**
+   * When true, the current tab is unsupported (not localhost, not file://).
+   * Header shows a "Not available here" chip; no inspect toggle.
+   */
   notApplicable?: boolean;
   showInspectToggle?: boolean;
   inspecting?: boolean;
   inspectDisabled?: boolean;
   currentTabUrl?: string;
   onInspect?: () => void;
-  onReconnect: () => void;
 }
-
-const CHIP_COPY: Record<ChipVariant, string> = {
-  connected: "Connected",
-  reconnecting: "Reconnecting…",
-  disconnected: "Disconnected",
-  "not-applicable": "Not available here",
-};
 
 function formatHost(url?: string): string | undefined {
   if (!url) return undefined;
@@ -33,19 +25,21 @@ function formatHost(url?: string): string | undefined {
   }
 }
 
+/**
+ * Header is visually independent from the WebSocket connection state.
+ * The chip on the right only carries tab-level info (host / not-applicable),
+ * which changes only when the user switches tabs. All server-state feedback
+ * lives in the page body (StatusGuide / inline disconnected notice).
+ */
 export function HeaderBar({
-  status,
   notApplicable = false,
   showInspectToggle = false,
   inspecting = false,
   inspectDisabled = false,
   currentTabUrl,
   onInspect,
-  onReconnect,
 }: HeaderBarProps) {
-  const variant: ChipVariant = notApplicable ? "not-applicable" : status;
-  const canReconnect = !notApplicable && status !== "connected";
-  const host = status === "connected" && !notApplicable ? formatHost(currentTabUrl) : undefined;
+  const host = notApplicable ? undefined : formatHost(currentTabUrl);
 
   return (
     <header className="flex h-11 flex-none items-center gap-2 border-b border-ip-border-subtle bg-ip-bg-secondary/50 px-3 backdrop-blur-sm">
@@ -61,7 +55,13 @@ export function HeaderBar({
 
       <div className="flex-1" />
 
-      <ConnectionChip variant={variant} host={host} canReconnect={canReconnect} onClick={onReconnect} />
+      {notApplicable ? (
+        <TabInfoChip tone="warning" label="Not available here" title="This tab type isn't supported by Inspatch" />
+      ) : host ? (
+        <span className="max-w-[180px] truncate font-code text-[11px] text-ip-text-muted" title={host}>
+          {host}
+        </span>
+      ) : null}
     </header>
   );
 }
@@ -95,74 +95,18 @@ function InspectToggle({ inspecting, disabled, onClick }: InspectToggleProps) {
   );
 }
 
-interface ConnectionChipProps {
-  variant: ChipVariant;
-  host?: string;
-  canReconnect: boolean;
-  onClick: () => void;
+interface TabInfoChipProps {
+  tone: "warning";
+  label: string;
+  title: string;
 }
 
-function ConnectionChip({ variant, host, canReconnect, onClick }: ConnectionChipProps) {
-  const dot =
-    variant === "connected"
-      ? "bg-ip-success"
-      : variant === "reconnecting"
-        ? "bg-ip-warning"
-        : variant === "disconnected"
-          ? "bg-ip-error"
-          : "bg-ip-warning";
-
-  // When we have a host (localhost port or "local file"), it self-describes the
-  // connected state — the green dot already signals "connected", so the
-  // "Connected ·" prefix is redundant noise. Fall back to the label only when
-  // there's nothing more specific to show.
-  const body = (
-    <>
-      <span className="relative flex h-2 w-2">
-        {variant === "connected" && (
-          <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-ip-success opacity-40" />
-        )}
-        {variant === "reconnecting" && (
-          <span className="absolute inline-flex h-full w-full animate-pulse rounded-full bg-ip-warning opacity-60" />
-        )}
-        <span className={`relative inline-flex h-2 w-2 rounded-full ${dot}`} />
-      </span>
-      {host ? (
-        <span
-          className="max-w-[160px] truncate font-code text-[11px] text-ip-text-secondary"
-          title={host}
-        >
-          {host}
-        </span>
-      ) : (
-        <span className="text-[11px] text-ip-text-muted">{CHIP_COPY[variant]}</span>
-      )}
-    </>
-  );
-
-  if (canReconnect) {
-    return (
-      <button
-        type="button"
-        onClick={onClick}
-        title="Click to reconnect"
-        className="inline-flex items-center gap-1.5 rounded-full px-2 py-1 transition-colors duration-150 hover:bg-ip-bg-tertiary active:scale-95"
-      >
-        {body}
-      </button>
-    );
-  }
-
+function TabInfoChip({ tone, label, title }: TabInfoChipProps) {
+  const dot = tone === "warning" ? "bg-ip-warning" : "bg-ip-text-muted/60";
   return (
-    <div
-      className="inline-flex items-center gap-1.5 rounded-full px-2 py-1"
-      title={
-        variant === "not-applicable"
-          ? "This tab type isn't supported by Inspatch"
-          : "Server connected"
-      }
-    >
-      {body}
+    <div className="inline-flex items-center gap-1.5 rounded-full px-2 py-1" title={title}>
+      <span className={`inline-flex h-2 w-2 rounded-full ${dot}`} />
+      <span className="text-[11px] text-ip-text-muted">{label}</span>
     </div>
   );
 }

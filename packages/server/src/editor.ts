@@ -17,15 +17,15 @@ async function isProcessRunning(name: string): Promise<boolean> {
 }
 
 export async function detectEditor(): Promise<EditorScheme> {
-  // Prefer whichever editor the user currently has open
-  if (await isProcessRunning("Cursor")) { logger.info("Auto-detected editor: cursor (process running)"); return "cursor"; }
-  if (await isProcessRunning("Code")) { logger.info("Auto-detected editor: vscode (process running)"); return "vscode"; }
+  // Prefer whichever editor the user currently has open, then fall back to
+  // whatever is installed, then default to cursor. The chosen editor is
+  // printed by the CLI entry point once, after the startup banner.
+  if (await isProcessRunning("Cursor")) return "cursor";
+  if (await isProcessRunning("Code")) return "vscode";
 
-  // Fall back to what's installed
-  if (existsSync("/Applications/Cursor.app")) { logger.info("Auto-detected editor: cursor (app installed)"); return "cursor"; }
-  if (existsSync("/Applications/Visual Studio Code.app")) { logger.info("Auto-detected editor: vscode (app installed)"); return "vscode"; }
+  if (existsSync("/Applications/Cursor.app")) return "cursor";
+  if (existsSync("/Applications/Visual Studio Code.app")) return "vscode";
 
-  logger.info("Auto-detected editor: cursor (default)");
   return "cursor";
 }
 

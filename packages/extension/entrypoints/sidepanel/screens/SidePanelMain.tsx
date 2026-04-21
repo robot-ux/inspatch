@@ -1,17 +1,17 @@
-import type { ChangeMode, ChangeResult, ConsoleError, ElementSelection, StatusUpdate } from "@inspatch/shared";
+import type { ChangeMode, ConsoleError, ElementSelection } from "@inspatch/shared";
 import { SERVER_ENDPOINT_DISPLAY } from "../config";
 import type { ConnectionStatus } from "../hooks/useWebSocket";
+import type { ConversationEntry } from "../hooks/useTabSessions";
 import { ChangeInput } from "../components/ChangeInput";
 import { ConsoleErrorTray } from "../components/ConsoleErrorTray";
+import { ConversationList } from "../components/ConversationList";
 import { ElementCard } from "../components/ElementCard";
 import { EmptyState } from "../components/EmptyState";
 import { FileUrlPermissionBanner } from "../components/FileUrlPermissionBanner";
 import { FooterMeta } from "../components/FooterMeta";
 import { HeaderBar } from "../components/HeaderBar";
+import { PlusIcon } from "../components/icons";
 import { OnboardingSteps } from "../components/OnboardingSteps";
-import { PlanProposal } from "../components/PlanProposal";
-import { ProcessingStatus } from "../components/ProcessingStatus";
-import { StatusDot } from "../components/StatusDot";
 import { StatusGuide } from "../components/StatusGuide";
 import { resolveTargetedNode } from "../utils/tree";
 
@@ -25,11 +25,8 @@ interface SidePanelMainProps {
   hasUsedInspect: boolean;
   selectedElement: ElementSelection | null;
   targetedXpath: string | null;
-  processing: StatusUpdate | null;
-  changeResult: ChangeResult | null;
-  pendingPlan: string | null;
-  streamedText: string;
-  statusLog: string[];
+  history: ConversationEntry[];
+  activeRequestId: string | null;
   consoleErrors: ConsoleError[];
   transientError: string | null;
   showFileUrlBanner: boolean;
@@ -47,8 +44,7 @@ interface SidePanelMainProps {
   onSendChange: (description: string, imageDataUrl?: string, mode?: ChangeMode) => void;
   onApprovePlan: () => void;
   onCancelPlan: () => void;
-  onRetry: () => void;
-  onClearConsoleErrors: () => void;
+  onNewConversation: () => void;
   onOpenSource: (file: string, line?: number, column?: number) => void;
 }
 
@@ -60,11 +56,8 @@ export function SidePanelMain(props: SidePanelMainProps) {
     hasUsedInspect,
     selectedElement,
     targetedXpath,
-    processing,
-    changeResult,
-    pendingPlan,
-    streamedText,
-    statusLog,
+    history,
+    activeRequestId,
     consoleErrors,
     transientError,
     showFileUrlBanner,
@@ -81,8 +74,7 @@ export function SidePanelMain(props: SidePanelMainProps) {
     onSendChange,
     onApprovePlan,
     onCancelPlan,
-    onRetry,
-    onClearConsoleErrors,
+    onNewConversation,
     onOpenSource,
   } = props;
 
@@ -97,19 +89,24 @@ export function SidePanelMain(props: SidePanelMainProps) {
   // On file:// pages without "Allow access to file URLs", the content script
   // can't be injected so Inspect would always fail — block it at the source.
   const inspectBlocked = disconnected || showFileUrlBanner;
+
+  const latestEntry = history.length > 0 ? history[history.length - 1] : null;
+  const hasPendingPlan = !!latestEntry?.pendingPlan;
+  const turnInFlight =
+    activeRequestId !== null &&
+    latestEntry?.requestId === activeRequestId &&
+    !latestEntry.changeResult;
   const trayVisible =
-    elementVisible && consoleErrors.length > 0 && !processing && !changeResult && !pendingPlan;
+    elementVisible && consoleErrors.length > 0 && history.length === 0;
 
   return (
     <div className="flex h-screen flex-col bg-ip-bg-primary">
       <HeaderBar
-        status={connectionStatus}
         showInspectToggle={showCompactToggle}
         inspecting={inspecting}
         inspectDisabled={inspectBlocked}
         currentTabUrl={currentTabUrl}
         onInspect={inspecting ? onStopInspect : onStartInspect}
-        onReconnect={onReconnect}
       />
 
       {showFileUrlBanner && <FileUrlPermissionBanner extensionId={extensionId} />}
@@ -134,30 +131,52 @@ export function SidePanelMain(props: SidePanelMainProps) {
 
       {trayVisible && (
         <div className="px-3 pb-2">
-          <ConsoleErrorTray errors={consoleErrors} onClear={onClearConsoleErrors} />
+          <ConsoleErrorTray errors={consoleErrors} />
+        </div>
+      )}
+
+      {elementVisible && disconnected && (
+        <div className="border-t border-ip-error/30 bg-ip-error-muted px-3 py-2">
+          <p className="text-[11px] text-ip-error">
+            Server disconnected — run <span className="font-code">npx @inspatch/server</span> to send changes.
+          </p>
+        </div>
+      )}
+
+      {elementVisible && history.length > 0 && !turnInFlight && !hasPendingPlan && (
+        <div className="flex items-center justify-between border-t border-ip-border-subtle bg-ip-bg-secondary/40 px-3 py-1.5">
+          <span className="text-[10px] uppercase tracking-wide text-ip-text-muted">
+            {history.length} turn{history.length === 1 ? "" : "s"} in this conversation
+          </span>
+          <button
+            type="button"
+            onClick={onNewConversation}
+            className="inline-flex items-center gap-1 rounded-ip-sm border border-ip-border-subtle bg-ip-bg-tertiary/40 px-2 py-0.5 text-[11px] font-medium text-ip-text-secondary transition-colors hover:border-ip-border-accent hover:text-ip-text-primary"
+            title="Start a fresh Claude session for this tab"
+          >
+            <PlusIcon size={10} />
+            New conversation
+          </button>
         </div>
       )}
 
       {elementVisible && (
-        <ChangeInput onSend={onSendChange} disabled={disconnected || !!processing || !!pendingPlan} />
+        <ChangeInput
+          onSend={onSendChange}
+          disabled={disconnected || turnInFlight || hasPendingPlan}
+        />
       )}
 
       <FooterMeta
-        left={
-          <>
-            {SERVER_ENDPOINT_DISPLAY}
-            <span className="mx-1.5 text-ip-text-muted/40">·</span>
-            <span className="text-ip-text-muted/70">v{getExtensionVersion()}</span>
-          </>
-        }
-        right={<ConnectionStatusBadge status={connectionStatus} />}
+        left={<EndpointStatusLine status={connectionStatus} endpoint={SERVER_ENDPOINT_DISPLAY} />}
+        right={<span className="text-ip-text-muted/70">v{getExtensionVersion()}</span>}
       />
     </div>
   );
 
   function renderBody() {
     if (disconnected && !elementVisible) {
-      return <StatusGuide status={connectionStatus} onReconnect={onReconnect} />;
+      return <StatusGuide onReconnect={onReconnect} />;
     }
 
     if (inspecting) {
@@ -181,24 +200,14 @@ export function SidePanelMain(props: SidePanelMainProps) {
           onRetargetLeave={onRetargetLeave}
           onTargetRow={onTargetRow}
         />
-        {pendingPlan ? (
-          <PlanProposal
-            plan={pendingPlan}
-            onApprove={onApprovePlan}
-            onCancel={onCancelPlan}
-            disabled={disconnected}
+        {history.length > 0 && (
+          <ConversationList
+            entries={history}
+            disconnected={disconnected}
+            onApprovePlan={onApprovePlan}
+            onCancelPlan={onCancelPlan}
+            onOpenSource={onOpenSource}
           />
-        ) : (processing || changeResult) && (
-          <div className="animate-fade-in-scale">
-            <ProcessingStatus
-              statusUpdate={processing}
-              changeResult={changeResult}
-              streamedText={streamedText}
-              statusLog={statusLog}
-              onRetry={onRetry}
-              onOpenSource={onOpenSource}
-            />
-          </div>
         )}
       </div>
     );
@@ -215,27 +224,18 @@ function getExtensionVersion(): string {
   }
 }
 
-function ConnectionStatusBadge({ status }: { status: ConnectionStatus }) {
-  if (status === "connected") {
-    return (
-      <>
-        <StatusDot tone="success" anim="ping" size={6} />
-        <span className="text-ip-success">connected</span>
-      </>
-    );
-  }
-  if (status === "reconnecting") {
-    return (
-      <>
-        <StatusDot tone="warning" anim="pulse" size={6} />
-        <span className="text-ip-warning">reconnecting</span>
-      </>
-    );
-  }
+const ENDPOINT_DOT: Record<ConnectionStatus, { cls: string; title: string }> = {
+  connected: { cls: "bg-ip-success", title: "Connected" },
+  reconnecting: { cls: "bg-ip-warning animate-pulse", title: "Reconnecting\u2026" },
+  disconnected: { cls: "bg-ip-error", title: "Disconnected" },
+};
+
+function EndpointStatusLine({ status, endpoint }: { status: ConnectionStatus; endpoint: string }) {
+  const { cls, title } = ENDPOINT_DOT[status];
   return (
-    <>
-      <StatusDot tone="error" size={6} />
-      <span className="text-ip-error">offline</span>
-    </>
+    <span className="inline-flex items-center gap-1.5" title={`${title} — ${endpoint}`}>
+      <span className={`inline-flex h-1.5 w-1.5 flex-none rounded-full ${cls}`} />
+      <span className="truncate">{endpoint}</span>
+    </span>
   );
 }

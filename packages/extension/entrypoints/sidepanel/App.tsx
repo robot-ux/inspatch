@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type {
   ChangeMode,
   ChangeRequest,
@@ -7,7 +7,7 @@ import type {
   PageSource,
 } from "@inspatch/shared";
 
-import { SERVER_WS, openInEditor, pendingKey } from "./config";
+import { SERVER_WS, newConversationId, openInEditor, pendingKey } from "./config";
 import { useActiveTab } from "./hooks/useActiveTab";
 import { useContentScript } from "./hooks/useContentScript";
 import { useFirstRun } from "./hooks/useFirstRun";
@@ -19,7 +19,6 @@ import { SidePanelMain } from "./screens/SidePanelMain";
 import { resolveTargetedNode } from "./utils/tree";
 
 export default function App() {
-  const { status, lastMessage, send, reconnect } = useWebSocket(SERVER_WS);
   const firstRun = useFirstRun();
 
   // Active-tab tracking. `onRead` fires on every tab read (including same-tab
@@ -34,9 +33,18 @@ export default function App() {
     setFileUrlPermission,
   } = useActiveTab({
     onRead: (tab, kind) => {
-      if (kind === "localhost" && tab.url) firstRun.markOpenedWithLocalhost(tab.url);
+      if ((kind === "localhost" || kind === "file") && tab.url) {
+        firstRun.markOpenedWithSupported(tab.url);
+      }
     },
     onSwitch: () => setTransientError(null),
+  });
+
+  // WS connect is placed after useActiveTab so we can pass the current tab URL
+  // in — the hook re-sends `identify` whenever this changes, so the server's
+  // logs follow real tab switches.
+  const { status, lastMessage, send, reconnect } = useWebSocket(SERVER_WS, {
+    tabUrl: currentTabUrl,
   });
 
   const sessions = useTabSessions(activeTabId);
@@ -51,20 +59,40 @@ export default function App() {
     setExtensionId(chrome.runtime?.id ?? "");
   }, []);
 
-  // When WS reconnects, try to resume any pending request for the active tab.
+  // When WS (re)connects, try to resume any pending request for the active
+  // tab. Destructured store callbacks are stable (useCallback w/ empty deps)
+  // so the effect only refires on real changes. `lastResumedRef` guards
+  // against redundant resume sends in the same connection cycle.
+  const sessionsPatch = sessions.patch;
+  const sessionsAssign = sessions.assign;
+  const sessionsPatchEntry = sessions.patchEntry;
+  const lastResumedRef = useRef<{ tabId: number; requestId: string } | null>(null);
   useEffect(() => {
-    if (status !== "connected" || activeTabId === null) return;
+    if (status !== "connected") {
+      lastResumedRef.current = null;
+      return;
+    }
+    if (activeTabId === null) return;
     const tabId = activeTabId;
     const key = pendingKey(tabId);
     chrome.storage.local.get(key).then((data) => {
       const pending = data[key] as { requestId: string; element: ElementSelection } | undefined;
       if (!pending) return;
-      sessions.patch(tabId, {
+      const already = lastResumedRef.current;
+      if (already && already.tabId === tabId && already.requestId === pending.requestId) return;
+      lastResumedRef.current = { tabId, requestId: pending.requestId };
+      sessionsPatch(tabId, {
         selectedElement: pending.element,
         targetedXpath: pending.element.xpath,
         hasUsedInspect: true,
         inspectState: "idle",
         activeRequestId: pending.requestId,
+      });
+      // If the pending entry is still in history, show a short reconnecting
+      // pill on it. If history was lost (sidepanel closed + reopened), the
+      // server's buffered reply will have no entry to land on — the user
+      // will simply see an empty chat and can retry.
+      sessionsPatchEntry(tabId, pending.requestId, {
         processing: {
           type: "status_update",
           requestId: pending.requestId,
@@ -72,10 +100,10 @@ export default function App() {
           message: "Reconnecting…",
         },
       });
-      sessions.assign(pending.requestId, tabId);
+      sessionsAssign(pending.requestId, tabId);
       send({ type: "resume", requestId: pending.requestId });
     });
-  }, [status, activeTabId, send, sessions]);
+  }, [status, activeTabId, send, sessionsPatch, sessionsAssign, sessionsPatchEntry]);
 
   // Content-script events + tab lifecycle (reload / close).
   useEffect(() => {
@@ -192,17 +220,10 @@ export default function App() {
     (xpath: string) => {
       const tabId = activeTabIdRef.current;
       if (tabId === null) return;
-      // Retargeting inside the existing snapshot tree is purely local: move
-      // the target pointer, clear stale result state so the detail panel
-      // reflects the new target without mixing in a previous request's output.
-      sessions.patch(tabId, {
-        targetedXpath: xpath,
-        processing: null,
-        changeResult: null,
-        pendingPlan: null,
-        streamedText: "",
-        statusLog: [],
-      });
+      // Retargeting inside the existing snapshot tree is purely local: only
+      // move the target pointer. The chat history stays intact — users may
+      // ask a follow-up question about the new target in the same session.
+      sessions.patch(tabId, { targetedXpath: xpath });
     },
     [sessions, activeTabIdRef],
   );
@@ -217,15 +238,38 @@ export default function App() {
       const target = resolveTargetedNode(selectedElement, targetedXpath);
       const isAnchor = target.xpath === selectedElement.xpath;
       const requestId = crypto.randomUUID();
+      // Reuse the tab's existing conversation or start a fresh one. The
+      // server uses this id to route turns into a long-lived Claude session
+      // so follow-ups keep full context.
+      const conversationId = curr.conversationId ?? newConversationId();
 
-      sessions.patch(tabId, {
-        activeRequestId: requestId,
-        processing: null,
-        changeResult: null,
-        pendingPlan: null,
-        streamedText: "",
-        statusLog: [],
-        consoleErrors: [],
+      sessions.startTurn(tabId, {
+        conversationId,
+        entry: {
+          requestId,
+          userText: description,
+          screenshotDataUrl: imageDataUrl,
+          target: {
+            componentName: target.componentName,
+            sourceFile: target.sourceFile,
+            sourceLine: target.sourceLine,
+            xpath: target.xpath,
+          },
+          // Optimistic loading state so the InFlightCard renders immediately
+          // instead of waiting on the server's first status_update. The real
+          // update from the server will overwrite this within a few hundred ms.
+          processing: {
+            type: "status_update",
+            requestId,
+            status: "analyzing",
+            message: "Sending to Claude…",
+          },
+          changeResult: null,
+          pendingPlan: null,
+          streamedText: "",
+          statusLog: [],
+          createdAt: Date.now(),
+        },
       });
       sessions.assign(requestId, tabId);
 
@@ -233,6 +277,7 @@ export default function App() {
       const changeRequest: ChangeRequest = {
         type: "change_request",
         requestId,
+        conversationId,
         description,
         // Target fields point to the actively selected row in the tree.
         // boundingRect / computedStyles / sourceColumn only exist on the
@@ -261,12 +306,25 @@ export default function App() {
     [send, sessions, activeTabIdRef],
   );
 
+  const handleNewConversation = useCallback(() => {
+    const tabId = activeTabIdRef.current;
+    if (tabId === null) return;
+    const curr = sessions.get(tabId);
+    if (curr?.activeRequestId) sessions.release(curr.activeRequestId);
+    sessions.patch(tabId, {
+      activeRequestId: null,
+      conversationId: null,
+      history: [],
+    });
+    chrome.storage.local.remove(pendingKey(tabId));
+  }, [sessions, activeTabIdRef]);
+
   const handleApprovePlan = useCallback(() => {
     const tabId = activeTabIdRef.current;
     if (tabId === null) return;
     const requestId = sessions.get(tabId)?.activeRequestId;
     if (!requestId) return;
-    sessions.patch(tabId, {
+    sessions.patchEntry(tabId, requestId, {
       pendingPlan: null,
       statusLog: [],
       streamedText: "",
@@ -286,49 +344,26 @@ export default function App() {
     const requestId = sessions.get(tabId)?.activeRequestId;
     if (requestId) {
       send({ type: "plan_approval", requestId, approve: false });
+      sessions.patchEntry(tabId, requestId, {
+        pendingPlan: null,
+        processing: null,
+        statusLog: [],
+        streamedText: "",
+      });
       sessions.release(requestId);
     }
-    sessions.patch(tabId, {
-      pendingPlan: null,
-      processing: null,
-      statusLog: [],
-      streamedText: "",
-      activeRequestId: null,
-    });
+    sessions.patch(tabId, { activeRequestId: null });
     chrome.storage.local.remove(pendingKey(tabId));
   }, [send, sessions, activeTabIdRef]);
 
-  const handleRetry = useCallback(() => {
-    const tabId = activeTabIdRef.current;
-    if (tabId === null) return;
-    const reqId = sessions.get(tabId)?.activeRequestId;
-    if (reqId) sessions.release(reqId);
-    sessions.patch(tabId, {
-      processing: null,
-      changeResult: null,
-      pendingPlan: null,
-      streamedText: "",
-      statusLog: [],
-      activeRequestId: null,
-    });
-  }, [sessions, activeTabIdRef]);
-
-  const handleClearConsoleErrors = useCallback(() => {
-    const tabId = activeTabIdRef.current;
-    if (tabId === null) return;
-    sessions.patch(tabId, { consoleErrors: [] });
-  }, [sessions, activeTabIdRef]);
-
   if (urlKind === "other") {
     const firstTime =
-      firstRun.ready && !firstRun.hasOpenedBefore && !firstRun.lastLocalhostUrl;
+      firstRun.ready && !firstRun.hasOpenedBefore && !firstRun.lastSupportedUrl;
     return (
       <NonLocalhostBlocked
-        connectionStatus={status}
         currentUrl={currentTabUrl}
-        lastLocalhostUrl={firstRun.lastLocalhostUrl}
+        lastSupportedUrl={firstRun.lastSupportedUrl}
         firstTime={firstTime}
-        onReconnect={reconnect}
       />
     );
   }
@@ -342,11 +377,8 @@ export default function App() {
       hasUsedInspect={current.hasUsedInspect}
       selectedElement={current.selectedElement}
       targetedXpath={current.targetedXpath}
-      processing={current.processing}
-      changeResult={current.changeResult}
-      pendingPlan={current.pendingPlan}
-      streamedText={current.streamedText}
-      statusLog={current.statusLog}
+      history={current.history}
+      activeRequestId={current.activeRequestId}
       consoleErrors={current.consoleErrors}
       transientError={transientError}
       showFileUrlBanner={urlKind === "file" && !fileUrlPermission}
@@ -363,8 +395,7 @@ export default function App() {
       onSendChange={handleSendChange}
       onApprovePlan={handleApprovePlan}
       onCancelPlan={handleCancelPlan}
-      onRetry={handleRetry}
-      onClearConsoleErrors={handleClearConsoleErrors}
+      onNewConversation={handleNewConversation}
       onOpenSource={openInEditor}
     />
   );

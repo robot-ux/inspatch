@@ -36,17 +36,21 @@ Download the latest `inspatch-extension-*.zip` from the [Releases](../../release
 
 ### 2. Start the server
 
-Point the server at your project directory:
+From any directory:
 
 ```bash
-npx @inspatch/server ./my-react-app
+npx @inspatch/server
 ```
 
-The server starts on `ws://127.0.0.1:9377` by default.
+The server starts on `ws://127.0.0.1:9377` by default. It's not bound to any
+single project — for each change request it auto-resolves the project root
+from the inspected element's own source path (walks up to the nearest
+`package.json`, never crosses your home directory). One server handles as
+many projects as you have open on `localhost`, as long as they all live
+under your home directory.
 
 ```
 Options:
-  -p, --project <dir>      Target project directory (required)
   --port <number>          WebSocket port (default: 9377)
   --editor <cursor|vscode> Editor to open files in (default: auto-detect)
   --timeout <seconds>      Claude runner timeout in seconds (default: 1800)
@@ -79,8 +83,8 @@ bun install
 # Start the extension dev server
 bun dev
 
-# Start the backend server (point at any local app)
-bun server --project ./path/to/app
+# Start the backend server (resolves target project per request)
+bun server
 
 # Run tests
 bun test

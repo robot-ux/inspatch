@@ -4,10 +4,14 @@ import { ChevronDownIcon } from "./icons";
 
 interface ConsoleErrorTrayProps {
   errors: ConsoleError[];
-  onClear: () => void;
 }
 
-export function ConsoleErrorTray({ errors, onClear }: ConsoleErrorTrayProps) {
+/**
+ * Read-only tray shown before the first turn. Console errors captured since
+ * selection are forwarded to Claude with the next change_request; they reset
+ * automatically on send, so there's no manual clear action.
+ */
+export function ConsoleErrorTray({ errors }: ConsoleErrorTrayProps) {
   const [expanded, setExpanded] = useState(false);
 
   if (errors.length === 0) return null;
@@ -23,29 +27,10 @@ export function ConsoleErrorTray({ errors, onClear }: ConsoleErrorTrayProps) {
         <span className="font-medium text-ip-error">
           ⚠ {errors.length} console error{errors.length > 1 ? "s" : ""} — will be sent to Claude
         </span>
-        <span className="flex items-center gap-2 text-ip-text-muted">
-          <span
-            role="button"
-            tabIndex={0}
-            onClick={(e) => {
-              e.stopPropagation();
-              onClear();
-            }}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" || e.key === " ") {
-                e.stopPropagation();
-                onClear();
-              }
-            }}
-            className="transition-colors hover:text-ip-error"
-          >
-            clear
-          </span>
-          <ChevronDownIcon
-            size={11}
-            className={`transition-transform duration-150 ${expanded ? "rotate-180" : ""}`}
-          />
-        </span>
+        <ChevronDownIcon
+          size={11}
+          className={`text-ip-text-muted transition-transform duration-150 ${expanded ? "rotate-180" : ""}`}
+        />
       </button>
       {expanded && (
         <div className="max-h-28 overflow-y-auto border-t border-[rgba(255,110,132,0.20)]">

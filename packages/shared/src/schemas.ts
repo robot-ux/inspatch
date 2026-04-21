@@ -77,6 +77,10 @@ export type ChangeMode = z.infer<typeof ChangeModeSchema>;
 export const ChangeRequestSchema = z.object({
   type: z.literal("change_request"),
   requestId: z.string().optional(),
+  // Groups successive requests from the same tab into one Claude conversation.
+  // Reset on page reload, URL change, or "New conversation" in the side panel.
+  // Server uses this to route each turn into a long-lived per-tab Claude agent.
+  conversationId: z.string().uuid(),
   description: z.string().min(1),
   elementXpath: z.string(),
   componentName: z.string().optional(),
@@ -117,20 +121,16 @@ export const StatusUpdateSchema = z.object({
   streamText: z.string().optional(),
 });
 
-// "git" = diff produced by `git diff` inside a Git repo.
-// "snapshot" = diff produced by comparing pre-run snapshots via `git diff --no-index`
-// (used when the project isn't a Git working tree).
-export const DiffModeSchema = z.enum(["git", "snapshot"]);
-export type DiffMode = z.infer<typeof DiffModeSchema>;
-
 export const ChangeResultSchema = z.object({
   type: z.literal("change_result"),
   requestId: z.string().optional(),
   success: z.boolean(),
-  diff: z.string().optional(),
-  diffMode: DiffModeSchema.optional(),
   filesModified: z.array(z.string()).optional(),
+  // Short headline describing what changed (from Claude's `**Changes:**` line).
   summary: z.string().optional(),
+  // Caveats / follow-ups (from `**Notes:**`). Absent when Claude had nothing
+  // to flag — the side panel hides the row in that case.
+  notes: z.string().optional(),
   error: z.string().optional(),
 });
 
@@ -140,6 +140,14 @@ export const InspectCommandSchema = z.discriminatedUnion("type", [
 ]);
 
 export type InspectCommand = z.infer<typeof InspectCommandSchema>;
+
+// Extension → server. Sent right after WS open and whenever the side panel
+// becomes bound to a different browser tab, so the server can include the
+// tab URL in its connection / queue logs.
+export const IdentifySchema = z.object({
+  type: z.literal("identify"),
+  tabUrl: z.string(),
+});
 
 export const ResumeRequestSchema = z.object({
   type: z.literal("resume"),
@@ -161,6 +169,7 @@ export const MessageSchema = z.discriminatedUnion("type", [
   ResumeNotFoundSchema,
   PlanProposalSchema,
   PlanApprovalSchema,
+  IdentifySchema,
 ]);
 
 export type ConnectionStatus = z.infer<typeof ConnectionStatusSchema>;
@@ -173,6 +182,7 @@ export type ResumeRequest = z.infer<typeof ResumeRequestSchema>;
 export type ResumeNotFound = z.infer<typeof ResumeNotFoundSchema>;
 export type PlanProposal = z.infer<typeof PlanProposalSchema>;
 export type PlanApproval = z.infer<typeof PlanApprovalSchema>;
+export type Identify = z.infer<typeof IdentifySchema>;
 export type Message = z.infer<typeof MessageSchema>;
 
 export const PingSchema = z.object({ type: z.literal("ping") });

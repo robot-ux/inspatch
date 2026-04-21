@@ -24,7 +24,14 @@ async function broadcastConnectionState(url: string, connected: boolean) {
   chrome.runtime.sendMessage({ type: "connection_status", connected }).catch(() => {});
 }
 
-export function useWebSocket(url: string) {
+interface UseWebSocketOptions {
+  // Optional tab URL used to identify this side-panel session to the server.
+  // Re-sent whenever it changes so the server's logs follow real tab switches.
+  tabUrl?: string;
+}
+
+export function useWebSocket(url: string, options: UseWebSocketOptions = {}) {
+  const { tabUrl } = options;
   const [status, setStatus] = useState<ConnectionStatus>("disconnected");
   const [lastMessage, setLastMessage] = useState<Message | null>(null);
 
@@ -36,6 +43,21 @@ export function useWebSocket(url: string) {
   const mountedRef = useRef(true);
   const urlRef = useRef(url);
   urlRef.current = url;
+  // Latest known tab URL (mirrored in a ref so the WS onopen handler can read
+  // it without being re-created on every tab change).
+  const tabUrlRef = useRef<string | undefined>(tabUrl);
+  tabUrlRef.current = tabUrl;
+  // What we last told the server about. Used to avoid re-sending identify on
+  // no-op renders, and to re-send it after a reconnect.
+  const lastSentTabUrlRef = useRef<string | undefined>(undefined);
+
+  function sendIdentifyIfNeeded(ws: WebSocket) {
+    const next = tabUrlRef.current;
+    if (!next || ws.readyState !== WebSocket.OPEN) return;
+    if (lastSentTabUrlRef.current === next) return;
+    ws.send(JSON.stringify({ type: "identify", tabUrl: next }));
+    lastSentTabUrlRef.current = next;
+  }
 
   const cleanup = useCallback(() => {
     if (pongTimeoutRef.current) clearTimeout(pongTimeoutRef.current);
@@ -66,6 +88,10 @@ export function useWebSocket(url: string) {
         backoffRef.current = INITIAL_BACKOFF;
         setStatus("connected");
         broadcastConnectionState(urlRef.current, true);
+        // Reset tab-identify memory on every new socket so the server sees a
+        // fresh identify (it doesn't persist across reconnects).
+        lastSentTabUrlRef.current = undefined;
+        sendIdentifyIfNeeded(ws);
 
         pingIntervalRef.current = setInterval(() => {
           if (ws.readyState === WebSocket.OPEN) {
@@ -141,6 +167,13 @@ export function useWebSocket(url: string) {
       }
     };
   }, [connect, cleanup]);
+
+  // When the active tab changes while the socket is already open, push a new
+  // identify so the server's logs reflect the switch immediately.
+  useEffect(() => {
+    const ws = wsRef.current;
+    if (ws) sendIdentifyIfNeeded(ws);
+  }, [tabUrl]);
 
   const send = useCallback((data: Message) => {
     const ws = wsRef.current;

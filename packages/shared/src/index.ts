@@ -14,7 +14,6 @@ export {
   PingPongSchema,
   MessageSchema,
   PageSourceSchema,
-  DiffModeSchema,
   PlanProposalSchema,
   PlanApprovalSchema,
   parseMessage,
@@ -35,7 +34,6 @@ export type {
   PingPong,
   Message,
   PageSource,
-  DiffMode,
   PlanProposal,
   PlanApproval,
 } from "./schemas";
