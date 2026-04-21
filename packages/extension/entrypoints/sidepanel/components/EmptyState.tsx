@@ -1,16 +1,6 @@
 import { CrosshairIcon } from "./icons";
 
-interface EmptyStateProps {
-  variant: "inspecting" | "idle";
-}
-
-export function EmptyState({ variant }: EmptyStateProps) {
-  const inspecting = variant === "inspecting";
-  const title = inspecting ? "Inspecting\u2026" : "Pick an element to start";
-  const hint = inspecting
-    ? "Click any DOM node on your localhost page."
-    : "Click Inspect in the header, then click anything on the page.";
-
+export function EmptyState() {
   return (
     <div className="flex h-full flex-col items-center justify-center gap-5 px-4 py-10 text-center animate-fade-in">
       <div className="relative flex h-[84px] w-[84px] items-center justify-center">
@@ -25,8 +15,12 @@ export function EmptyState({ variant }: EmptyStateProps) {
         <CrosshairIcon size={36} className="relative text-ip-text-accent" />
       </div>
       <div className="flex flex-col gap-1.5">
-        <span className="text-[15px] font-semibold tracking-tight text-ip-text-primary">{title}</span>
-        <span className="max-w-[280px] text-[12px] leading-snug text-ip-text-muted">{hint}</span>
+        <span className="text-[15px] font-semibold tracking-tight text-ip-text-primary">
+          Inspecting&hellip;
+        </span>
+        <span className="max-w-[280px] text-[12px] leading-snug text-ip-text-muted">
+          Click any DOM node on your localhost page.
+        </span>
       </div>
     </div>
   );

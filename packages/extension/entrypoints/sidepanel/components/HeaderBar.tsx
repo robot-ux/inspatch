@@ -19,7 +19,7 @@ const CHIP_COPY: Record<ChipVariant, string> = {
   connected: "Connected",
   reconnecting: "Reconnecting…",
   disconnected: "Disconnected",
-  "not-applicable": "—",
+  "not-applicable": "Not available here",
 };
 
 function formatHost(url?: string): string | undefined {
@@ -48,7 +48,7 @@ export function HeaderBar({
   const host = status === "connected" && !notApplicable ? formatHost(currentTabUrl) : undefined;
 
   return (
-    <header className="flex h-10 flex-none items-center gap-2 border-b border-ip-border-subtle bg-ip-bg-secondary/50 px-3 backdrop-blur-sm">
+    <header className="flex h-11 flex-none items-center gap-2 border-b border-ip-border-subtle bg-ip-bg-secondary/50 px-3 backdrop-blur-sm">
       {showInspectToggle && !notApplicable ? (
         <InspectToggle
           inspecting={inspecting}
@@ -56,7 +56,7 @@ export function HeaderBar({
           onClick={onInspect}
         />
       ) : (
-        <span className="text-[12px] font-semibold tracking-tight text-ip-text-primary">Inspatch</span>
+        <span className="text-[11px] font-semibold tracking-tight text-ip-text-primary">Inspatch</span>
       )}
 
       <div className="flex-1" />
@@ -81,7 +81,7 @@ function InspectToggle({ inspecting, disabled, onClick }: InspectToggleProps) {
       aria-pressed={inspecting}
       title={inspecting ? "Stop inspecting" : "Start inspect"}
       className={[
-        "inline-flex h-8 items-center gap-1.5 rounded-ip-sm px-3 text-[12px] font-medium transition-all duration-150",
+        "inline-flex h-7 items-center gap-1 rounded-ip-sm px-2.5 text-[11px] font-medium transition-all duration-150",
         inspecting
           ? "animate-glow-error bg-ip-error-muted text-ip-error hover:brightness-110"
           : disabled
@@ -89,7 +89,7 @@ function InspectToggle({ inspecting, disabled, onClick }: InspectToggleProps) {
             : "bg-linear-[135deg] from-ip-gradient-start to-ip-gradient-end text-white shadow-ip-card hover:brightness-110 active:scale-95",
       ].join(" ")}
     >
-      {inspecting ? <StopIcon size={12} /> : <InspatchMark size={13} />}
+      {inspecting ? <StopIcon size={11} /> : <InspatchMark size={12} />}
       <span>{inspecting ? "Stop inspect" : "Inspect"}</span>
     </button>
   );
@@ -110,8 +110,12 @@ function ConnectionChip({ variant, host, canReconnect, onClick }: ConnectionChip
         ? "bg-ip-warning"
         : variant === "disconnected"
           ? "bg-ip-error"
-          : "bg-ip-text-muted";
+          : "bg-ip-warning";
 
+  // When we have a host (localhost port or "local file"), it self-describes the
+  // connected state — the green dot already signals "connected", so the
+  // "Connected ·" prefix is redundant noise. Fall back to the label only when
+  // there's nothing more specific to show.
   const body = (
     <>
       <span className="relative flex h-2 w-2">
@@ -123,14 +127,15 @@ function ConnectionChip({ variant, host, canReconnect, onClick }: ConnectionChip
         )}
         <span className={`relative inline-flex h-2 w-2 rounded-full ${dot}`} />
       </span>
-      <span className="text-[11px] text-ip-text-muted">{CHIP_COPY[variant]}</span>
-      {host && (
-        <>
-          <span className="text-[11px] text-ip-text-muted/50">·</span>
-          <span className="max-w-[140px] truncate font-code text-[11px] text-ip-text-secondary" title={host}>
-            {host}
-          </span>
-        </>
+      {host ? (
+        <span
+          className="max-w-[160px] truncate font-code text-[11px] text-ip-text-secondary"
+          title={host}
+        >
+          {host}
+        </span>
+      ) : (
+        <span className="text-[11px] text-ip-text-muted">{CHIP_COPY[variant]}</span>
       )}
     </>
   );
@@ -151,7 +156,11 @@ function ConnectionChip({ variant, host, canReconnect, onClick }: ConnectionChip
   return (
     <div
       className="inline-flex items-center gap-1.5 rounded-full px-2 py-1"
-      title={variant === "connected" ? "Server connected" : "Not applicable on this tab"}
+      title={
+        variant === "not-applicable"
+          ? "This tab type isn't supported by Inspatch"
+          : "Server connected"
+      }
     >
       {body}
     </div>

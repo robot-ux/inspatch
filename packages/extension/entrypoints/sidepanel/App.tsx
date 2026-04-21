@@ -317,6 +317,7 @@ export default function App() {
     setStreamedText("");
     setStatusLog([]);
     setConsoleErrors([]);
+    setHasUsedInspect(false);
     activeRequestId.current = null;
     inspectTabId.current = null;
     if (activeTabId.current) chrome.storage.local.remove(pendingKey(activeTabId.current));

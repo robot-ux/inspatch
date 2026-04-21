@@ -18,7 +18,7 @@ export function FileUrlPermissionBanner({ extensionId }: FileUrlPermissionBanner
   };
 
   return (
-    <div className="animate-slide-down border-b border-ip-warning/30 bg-ip-warning-muted px-4 py-3">
+    <div className="animate-slide-down border-b border-ip-warning/30 bg-ip-warning-muted px-3 py-3">
       <p className="text-[12px] font-medium text-ip-warning">
         Inspatch needs &ldquo;Allow access to file URLs&rdquo; for local HTML files
       </p>

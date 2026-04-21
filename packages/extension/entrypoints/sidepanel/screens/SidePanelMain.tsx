@@ -114,17 +114,17 @@ export function SidePanelMain(props: SidePanelMainProps) {
       {showFileUrlBanner && <FileUrlPermissionBanner extensionId={extensionId} />}
 
       {transientError && (
-        <div className="animate-slide-down border-b border-ip-warning/30 bg-ip-warning-muted px-4 py-2">
+        <div className="animate-slide-down border-b border-ip-warning/30 bg-ip-warning-muted px-3 py-2">
           <p className="text-[11px] text-ip-warning">{transientError}</p>
         </div>
       )}
 
-      <main className="flex-1 overflow-y-auto p-4">
+      <main className="flex-1 overflow-y-auto px-3 py-4">
         {renderBody()}
       </main>
 
       {elementVisible && !targetHasSource && selectedElement?.pageSource !== "file" && (
-        <div className="border-t border-ip-warning/30 bg-ip-warning-muted px-4 py-2">
+        <div className="border-t border-ip-warning/30 bg-ip-warning-muted px-3 py-2">
           <p className="text-[11px] text-ip-warning">
             No source file detected — changes may require manual file lookup. Ensure your dev server has source maps enabled.
           </p>
@@ -142,7 +142,13 @@ export function SidePanelMain(props: SidePanelMainProps) {
       )}
 
       <FooterMeta
-        left={<>ws://127.0.0.1:9377</>}
+        left={
+          <>
+            ws://127.0.0.1:9377
+            <span className="mx-1.5 text-ip-text-muted/40">·</span>
+            <span className="text-ip-text-muted/70">v{getExtensionVersion()}</span>
+          </>
+        }
         right={<ConnectionStatusBadge status={connectionStatus} />}
       />
     </div>
@@ -154,11 +160,10 @@ export function SidePanelMain(props: SidePanelMainProps) {
     }
 
     if (inspecting) {
-      return <EmptyState variant="inspecting" />;
+      return <EmptyState />;
     }
 
     if (!selectedElement) {
-      if (hasUsedInspect) return <EmptyState variant="idle" />;
       return <OnboardingSteps onStartInspect={onStartInspect} disabled={inspectBlocked} />;
     }
 
@@ -196,6 +201,16 @@ export function SidePanelMain(props: SidePanelMainProps) {
         )}
       </div>
     );
+  }
+}
+
+// chrome.runtime.getManifest() is synchronous and safe to call during render in
+// MV3 extension contexts; falls back to "?" if unavailable (e.g. dev preview).
+function getExtensionVersion(): string {
+  try {
+    return chrome?.runtime?.getManifest?.()?.version ?? "?";
+  } catch {
+    return "?";
   }
 }
 
