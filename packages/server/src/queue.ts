@@ -1,3 +1,4 @@
+import { isAbsolute, resolve } from "node:path";
 import type { ServerWebSocket } from "bun";
 import type { ChangeRequest } from "@inspatch/shared";
 import { createLogger } from "@inspatch/shared";
@@ -231,7 +232,12 @@ export class RequestQueue {
         const claudeFiles = result.filesModified ?? [];
         const postRequestFiles = await getGitModifiedFiles(projectDir);
         const newlyDirty = postRequestFiles.filter((f) => !preRequestFiles.has(f) && !claudeFiles.includes(f));
-        const files = [...claudeFiles, ...newlyDirty];
+        // Resolve to absolute paths so the extension's /open-in-editor call
+        // doesn't depend on server-side cwd. The endpoint receives the same
+        // abs string it got here and hands it straight to the editor scheme.
+        const files = [...claudeFiles, ...newlyDirty].map((f) =>
+          isAbsolute(f) ? f : resolve(projectDir, f),
+        );
 
         logger.info(`Done in ${elapsed}s — ${files.length} file(s) modified: ${files.join(", ") || "none"}`);
         const target = this.resolveWs(requestId, ws);

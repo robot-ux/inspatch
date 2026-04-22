@@ -62,9 +62,14 @@ export function NonLocalhostBlocked({
           </div>
 
           {lastSupportedUrl && (
-            <p className="flex items-center gap-1.5 text-[11px] text-ip-text-muted">
-              <span>Last session</span>
-              <span className="font-code text-ip-text-secondary">{lastSupportedUrl}</span>
+            <p
+              className="flex w-full items-center gap-1.5 text-[11px] text-ip-text-muted"
+              title={lastSupportedUrl}
+            >
+              <span className="shrink-0">Last session</span>
+              <span className="min-w-0 flex-1 truncate font-code text-ip-text-secondary">
+                {lastSupportedUrl}
+              </span>
             </p>
           )}
 

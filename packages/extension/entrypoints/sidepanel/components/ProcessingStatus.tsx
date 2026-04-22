@@ -150,6 +150,16 @@ interface SuccessCardProps {
 // Matches the cap Claude is instructed to respect in the system prompt.
 const FILES_DISPLAY_LIMIT = 10;
 
+// Server sends absolute paths so /open-in-editor always knows where to look,
+// but those are too long for the narrow side panel and CSS truncation cuts
+// from the right (hiding the filename — the one thing the user wants to see).
+// Show only the trailing 3 segments; the full path is in the button's title.
+function displayPath(path: string): string {
+  const parts = path.split("/").filter(Boolean);
+  if (parts.length <= 3) return path;
+  return parts.slice(-3).join("/");
+}
+
 function SuccessCard({ result, onOpenSource }: SuccessCardProps) {
   const files = result.filesModified ?? [];
   const shown = files.slice(0, FILES_DISPLAY_LIMIT);
@@ -180,7 +190,7 @@ function SuccessCard({ result, onOpenSource }: SuccessCardProps) {
               className="block w-full truncate text-left font-code text-[12px] text-ip-success transition-colors hover:text-ip-success/80 hover:underline"
               title={`${file} — click to open in editor`}
             >
-              {file}
+              {displayPath(file)}
             </button>
           ))}
           {overflow > 0 && (

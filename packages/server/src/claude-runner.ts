@@ -294,18 +294,25 @@ export interface SummaryParts {
 
 // Parses the Summary block emitted at the end of an edit turn. See
 // prompts.ts for the expected shape: `**Changes:** ...` / `**Notes:** ...`.
+// Falls back to scanning the whole message if Claude forgets the `## Summary`
+// heading, and accepts the legacy `**UI changes:**` label from the old prompt
+// so mid-rollout turns still surface a headline.
 export function extractSummaryParts(text: string): SummaryParts {
-  const block = text.match(/##\s*Summary\s*\n([\s\S]+?)(?:\n##\s|\n---|\n\n\n|$)/)?.[1];
-  if (!block) return {};
+  const block = text.match(/##\s*Summary\s*\n([\s\S]+?)(?:\n##\s|\n---|\n\n\n|$)/)?.[1] ?? text;
   return {
-    changes: extractSummaryField(block, "Changes"),
+    changes: extractSummaryField(block, "Changes") ?? extractSummaryField(block, "UI changes"),
     notes: extractSummaryField(block, "Notes"),
   };
 }
 
+// Returns paths of files dirty in `projectDir`'s working tree, expressed
+// relative to `projectDir` itself. The `--relative` flag is critical when
+// `projectDir` is a subfolder of a larger git repo (monorepo case) — without
+// it git returns repo-root-relative paths, which the caller would then
+// incorrectly resolve against `projectDir`.
 export async function getGitModifiedFiles(projectDir: string): Promise<string[]> {
   try {
-    const proc = Bun.spawn(["git", "diff", "--name-only"], {
+    const proc = Bun.spawn(["git", "diff", "--name-only", "--relative"], {
       cwd: projectDir,
       stdout: "pipe",
       stderr: "pipe",
